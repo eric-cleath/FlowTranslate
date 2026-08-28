@@ -1,0 +1,15 @@
+[req]
+distinguished_name = subject
+x509_extensions = extensions
+prompt = no
+
+[subject]
+CN = FlowTranslate Local Signing
+O = FlowTranslate Personal Development
+
+[extensions]
+basicConstraints = critical,CA:FALSE
+keyUsage = critical,digitalSignature
+extendedKeyUsage = critical,codeSigning
+subjectKeyIdentifier = hash
+authorityKeyIdentifier = keyid,issuer

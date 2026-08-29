@@ -83,8 +83,8 @@ struct DocumentImportService {
         return try await withCheckedThrowingContinuation { continuation in
             let request = VNRecognizeTextRequest { request, error in
                 if let error { continuation.resume(throwing: error); return }
-                let lines = (request.results as? [VNRecognizedTextObservation])?.compactMap { $0.topCandidates(1).first?.string } ?? []
-                continuation.resume(returning: lines.joined(separator: "\n"))
+                let observations = request.results as? [VNRecognizedTextObservation] ?? []
+                continuation.resume(returning: Self.mergeRecognizedLines(observations))
             }
             request.recognitionLevel = .accurate
             request.usesLanguageCorrection = true
@@ -94,6 +94,38 @@ struct DocumentImportService {
                 catch { continuation.resume(throwing: error) }
             }
         }
+    }
+
+    private static func mergeRecognizedLines(_ observations: [VNRecognizedTextObservation]) -> String {
+        let lines = observations.compactMap { observation -> (String, CGRect)? in
+            guard let value = observation.topCandidates(1).first?.string.trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty else { return nil }
+            return (value, observation.boundingBox)
+        }.sorted {
+            if abs($0.1.midY - $1.1.midY) > max($0.1.height, $1.1.height) * 0.55 { return $0.1.midY > $1.1.midY }
+            return $0.1.minX < $1.1.minX
+        }
+        guard !lines.isEmpty else { return "" }
+        let heights = lines.map { $0.1.height }.sorted()
+        let typicalHeight = heights[heights.count / 2]
+        var result = lines[0].0
+        for index in 1..<lines.count {
+            let previous = lines[index - 1], current = lines[index]
+            let verticalGap = previous.1.minY - current.1.maxY
+            let paragraphBreak = verticalGap > typicalHeight * 1.15 || isListStart(current.0)
+            if paragraphBreak { result += "\n\n" + current.0; continue }
+            if result.last == "-" && usesLatinSpacing(previous.0, current.0) { result.removeLast(); result += current.0 }
+            else { result += (usesLatinSpacing(previous.0, current.0) ? " " : "") + current.0 }
+        }
+        return result
+    }
+
+    private static func usesLatinSpacing(_ left: String, _ right: String) -> Bool {
+        guard let lhs = left.unicodeScalars.last, let rhs = right.unicodeScalars.first else { return false }
+        return lhs.value < 0x2E80 && rhs.value < 0x2E80 && !CharacterSet.whitespacesAndNewlines.contains(lhs)
+    }
+
+    private static func isListStart(_ text: String) -> Bool {
+        text.range(of: #"^(?:[-•·]|\d+[.)]|[A-Za-z][.)])\s+"#, options: .regularExpression) != nil
     }
 
     static func chunks(from text: String, limit: Int = 3500) -> [String] {

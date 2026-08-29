@@ -136,8 +136,6 @@ struct DocumentTranslationView: View {
                 Spacer()
                 Picker("输出", selection: $model.outputStyle) { ForEach(DocumentOutputStyle.allCases) { Text($0.rawValue).tag($0) } }
                     .frame(width: 150)
-                Button { UserDefaults.standard.set("文档翻译", forKey: "requestedSettingsCategory"); openSettings() } label: { Image(systemName: "gearshape") }
-                    .buttonStyle(.plain).help("打开文档翻译设置")
             }
             filePreview
             HStack {
@@ -159,10 +157,11 @@ struct DocumentTranslationView: View {
             } else { Text(model.status).font(.caption).foregroundStyle(.secondary) }
             if let error = model.errorMessage { Text(error).font(.callout).foregroundStyle(.red) }
             HStack {
+                Button { UserDefaults.standard.set("文档翻译", forKey: "requestedSettingsCategory"); openSettings() } label: { Image(systemName: "gearshape") }
+                    .buttonStyle(.plain).help("打开文档翻译设置")
                 if model.isWorking { Button("暂停", action: model.cancel) }
                 Spacer()
                 Button("导出结果", action: model.export).disabled(model.resultText.isEmpty || model.isWorking)
-                Button("提取文字") { model.extractText() }.disabled((model.fileURL == nil && model.pastedImage == nil) || model.isWorking)
                 Button("开始翻译") { model.translate(using: state) }.buttonStyle(.borderedProminent).disabled(model.sourceText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || model.isWorking)
             }
         }.padding(embedded ? 12 : 18).frame(minWidth: embedded ? 720 : 900, minHeight: embedded ? 440 : 620)
@@ -190,6 +189,11 @@ struct DocumentTranslationView: View {
             ZStack(alignment: .topLeading) {
                 TextEditor(text: $model.sourceText).font(.system(size: state.editorFontSize)).lineSpacing(state.editorLineSpacing).scrollContentBackground(.hidden).padding(6).background(.background.secondary, in: RoundedRectangle(cornerRadius: 10))
                 if model.sourceText.isEmpty { Text("先点击“提取文字”，确认内容后再开始翻译").foregroundStyle(.tertiary).padding(14).allowsHitTesting(false) }
+            }
+            HStack {
+                if !model.sourceText.isEmpty { Text("已提取 \(model.sourceText.count) 个字符").font(.caption).foregroundStyle(.secondary) }
+                Spacer()
+                Button("提取文字") { model.extractText() }.disabled((model.fileURL == nil && model.pastedImage == nil) || model.isWorking)
             }
         }.frame(minWidth: 350)
     }

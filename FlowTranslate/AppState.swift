@@ -453,22 +453,45 @@ final class AppState {
     }
 
     private func resolvedTranslationProvider() -> TranslationProvider? {
-        if translationProvider == .ai, !enabledTranslationAIs.contains(translationAIPreset.rawValue),
-           let next = AIProviderPreset.allCases.first(where: { enabledTranslationAIs.contains($0.rawValue) }) {
-            selectTranslationAI(next)
-        }
-        if translationProvider == .deepl && deepLEnabled { return .deepl }
-        if translationProvider == .ai && aiTranslationEnabled { return .ai }
-        if deepLEnabled { translationProvider = .deepl; persistTranslationPreferences(); return .deepl }
-        if aiTranslationEnabled { translationProvider = .ai; persistTranslationPreferences(); return .ai }
+        normalizeTranslationProvider()
+        if translationProvider == .deepl,
+           deepLEnabled,
+           addedTranslationServiceIDs.contains(ServiceEntry.deepl.id) { return .deepl }
+        if translationProvider == .ai,
+           enabledTranslationAIs.contains(translationAIPreset.rawValue),
+           addedTranslationServiceIDs.contains(ServiceEntry.ai(translationAIPreset).id) { return .ai }
         return nil
     }
 
     private func normalizeTranslationProvider() {
-        if translationProvider == .deepl && deepLEnabled { return }
-        if translationProvider == .ai && aiTranslationEnabled { return }
-        if deepLEnabled { translationProvider = .deepl }
-        else if aiTranslationEnabled { translationProvider = .ai }
+        let currentIsValid: Bool
+        if translationProvider == .deepl {
+            currentIsValid = deepLEnabled && addedTranslationServiceIDs.contains(ServiceEntry.deepl.id)
+        } else {
+            currentIsValid = enabledTranslationAIs.contains(translationAIPreset.rawValue)
+                && addedTranslationServiceIDs.contains(ServiceEntry.ai(translationAIPreset).id)
+        }
+        if currentIsValid { return }
+
+        for entry in addedTranslationServices where isTranslationServiceEnabled(entry) {
+            switch entry {
+            case .deepl:
+                translationProvider = .deepl
+            case .ai(let preset):
+                translationAIPreset = preset
+                translationProvider = .ai
+                aiTranslationEnabled = true
+                let suffix = profileSuffix(preset)
+                translationEndpoint = UserDefaults.standard.string(forKey: "translationEndpoint.\(suffix)") ?? preset.endpoint
+                translationModel = UserDefaults.standard.string(forKey: "translationModel.\(suffix)") ?? preset.suggestedModel
+                translationAPIKey = KeychainStore.read(account: "translationAPIKey.\(suffix)")
+            }
+            persistTranslationPreferences()
+            return
+        }
+        aiTranslationEnabled = false
+        if !deepLEnabled { translationProvider = .ai }
+        persistTranslationPreferences()
     }
 
     private func persistTranslationPreferences() {

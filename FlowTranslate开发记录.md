@@ -10,7 +10,7 @@ tags:
   - AI写作
   - 开发记录
 status: active
-current_version: 0.6.0
+current_version: 0.6.1
 updated: 2026-08-29
 ---
 
@@ -183,9 +183,20 @@ updated: 2026-08-29
 
 SHA-256：`208330699dec5852e13337aa5e8fa059262d2d0e1b35af5e736f186daa6df78d`
 
+### 0.6.1：当前引擎状态修复
+
+- 修复升级后服务列表只保留 DeepL，但旧的 Ollama/AI 状态仍被当作当前引擎的问题。
+- 当前引擎现在必须同时满足“已添加”和“已启用”。
+- 当前引擎无效时，按服务列表顺序自动切换到第一个可用引擎。
+- 解决把 Ollama 占位 Key `ollama` 错误发送到 OpenAI 地址而出现 `Incorrect API key provided: ollama` 的问题。
+
+发布文件：`PallasOwl-0.6.1-arm64.dmg`
+
+SHA-256：`8e01d78df7c5bd7fa586140e47a5299daf26432343f3d77a4b828b9e8c045b49`
+
 ## 五、当前版本能力
 
-当前版本：`0.6.0`
+当前版本：`0.6.1`
 
 ### 翻译入口
 

@@ -16,6 +16,10 @@ struct PallasOwlApp: App {
             HistoryView().environment(state).environment(\.locale, state.locale)
         }
 
+        Window("文档翻译", id: "document-translation") {
+            DocumentTranslationView().environment(state).environment(\.locale, state.locale)
+        }
+
         Settings {
             SettingsView().environment(state).environment(\.locale, state.locale)
         }
@@ -39,6 +43,7 @@ private struct MenuBarContent: View {
         Button("划词翻译  \(shortcut(.selection))") { GlobalCaptureService.shared.captureSelection() }
         Button("截图翻译  \(shortcut(.screenshot))") { GlobalCaptureService.shared.captureScreenshot() }
         Button("跨语写作并替换  \(shortcut(.crossWriting))") { GlobalCaptureService.shared.captureForCrossLanguageWriting() }
+        Button("文档翻译…") { openWindow(id: "document-translation") }
         Button("历史记录") { openWindow(id: "history") }
         Divider()
         Button("设置…") { openSettings() }

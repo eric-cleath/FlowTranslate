@@ -35,6 +35,11 @@ final class AppState {
     var addedWritingServiceIDs = UserDefaults.standard.stringArray(forKey: "addedWritingServiceIDs") ?? []
     var enabledWritingAIs: Set<String> = Set(UserDefaults.standard.stringArray(forKey: "enabledWritingAIs") ?? [])
     var writingUsesTranslationEngine = UserDefaults.standard.object(forKey: "writingUsesTranslationEngine") as? Bool ?? false
+    var documentEngineMode = DocumentEngineMode(rawValue: UserDefaults.standard.string(forKey: "documentEngineMode") ?? "") ?? .shared
+    var documentAIPreset = AIProviderPreset(rawValue: UserDefaults.standard.string(forKey: "documentAIPreset") ?? "") ?? .openAI
+    var documentEndpoint = UserDefaults.standard.string(forKey: "documentEndpoint") ?? "https://api.openai.com/v1/chat/completions"
+    var documentModel = UserDefaults.standard.string(forKey: "documentModel") ?? "gpt-4.1-mini"
+    var documentAPIKey = KeychainStore.read(account: "documentAPIKey")
     var appLanguage = AppLanguage(rawValue: UserDefaults.standard.string(forKey: "appLanguage") ?? "") ?? .system
     var deepLAPIKey = KeychainStore.read(account: "deepLAPIKey")
     var deepLAPIType = DeepLAPIType(rawValue: UserDefaults.standard.string(forKey: "deepLAPIType") ?? "") ?? .free
@@ -170,6 +175,10 @@ final class AppState {
         UserDefaults.standard.set(addedWritingServiceIDs, forKey: "addedWritingServiceIDs")
         UserDefaults.standard.set(Array(enabledWritingAIs), forKey: "enabledWritingAIs")
         UserDefaults.standard.set(writingUsesTranslationEngine, forKey: "writingUsesTranslationEngine")
+        UserDefaults.standard.set(documentEngineMode.rawValue, forKey: "documentEngineMode")
+        UserDefaults.standard.set(documentAIPreset.rawValue, forKey: "documentAIPreset")
+        UserDefaults.standard.set(documentEndpoint, forKey: "documentEndpoint")
+        UserDefaults.standard.set(documentModel, forKey: "documentModel")
         UserDefaults.standard.set(appLanguage.rawValue, forKey: "appLanguage")
         UserDefaults.standard.set(Array(enabledTranslationAIs), forKey: "enabledTranslationAIs")
         UserDefaults.standard.set(editorFontSize, forKey: "editorFontSize")
@@ -180,6 +189,7 @@ final class AppState {
         if !translationAPIKey.isEmpty { try KeychainStore.save(translationAPIKey, account: "translationAPIKey") }
         if !writingAPIKey.isEmpty { try KeychainStore.save(writingAPIKey, account: "writingAPIKey") }
         if !deepLAPIKey.isEmpty { try KeychainStore.save(deepLAPIKey, account: "deepLAPIKey") }
+        if !documentAPIKey.isEmpty { try KeychainStore.save(documentAPIKey, account: "documentAPIKey") }
         try saveTranslationAIProfile(translationAIPreset)
         try saveWritingAIProfile(writingAIPreset)
     }
@@ -420,10 +430,43 @@ final class AppState {
         }
         if writingAPIKey.isEmpty { writingAPIKey = readSecret("writingAPIKey") }
         if deepLAPIKey.isEmpty { deepLAPIKey = readSecret("deepLAPIKey") }
+        if documentAPIKey.isEmpty { documentAPIKey = readSecret("documentAPIKey") }
     }
 
     func reloadSecretsAfterUnlock() {
-        Task { await reloadSecretsWithRetry(force: true) }
+        guard keychainIssue != nil || translationAPIKey.isEmpty || writingAPIKey.isEmpty || deepLAPIKey.isEmpty else { return }
+        Task { await reloadSecretsWithRetry() }
+    }
+
+    func translateDocumentChunk(_ text: String, source: Language, target: Language) async throws -> String {
+        await reloadSecretsWithRetry()
+        let provider: TranslationProvider
+        switch documentEngineMode {
+        case .shared:
+            guard let current = resolvedTranslationProvider() else { throw ServiceError.invalidConfiguration }
+            provider = current
+        case .ai: provider = .ai
+        case .deepl: provider = .deepl
+        }
+        if provider == .deepl {
+            guard !deepLAPIKey.isEmpty else { throw ServiceError.invalidConfiguration }
+            return try await deepLService.translate(text: text, target: target, apiKey: deepLAPIKey, apiType: deepLAPIType, formality: deepLFormality)
+        }
+        let shared = documentEngineMode == .shared
+        let preset = shared ? translationAIPreset : documentAIPreset
+        let endpoint = shared ? translationEndpoint : documentEndpoint
+        let model = shared ? translationModel : documentModel
+        let storedKey = shared ? translationAPIKey : documentAPIKey
+        let key = storedKey.isEmpty && preset == .ollama ? "ollama" : storedKey
+        guard let url = URL(string: endpoint), !model.isEmpty, !key.isEmpty else { throw ServiceError.invalidConfiguration }
+        return try await service.perform(text: text, mode: .translate, source: source, target: target,
+                                         configuration: .init(endpoint: url, apiKey: key, model: model))
+    }
+
+    func applyDocumentAIPreset(_ preset: AIProviderPreset) {
+        documentAIPreset = preset
+        if preset != .custom { documentEndpoint = preset.endpoint; documentModel = preset.suggestedModel }
+        try? saveSettings()
     }
 
     func prepareInput(_ text: String, mode: WorkMode = .translate, activate: Bool = true) {
@@ -551,6 +594,7 @@ final class AppState {
             if force || translationAPIKey.isEmpty, let value = readSecretPreservingFailure(translationAccount), !value.isEmpty { translationAPIKey = value }
             if force || writingAPIKey.isEmpty, let value = readSecretPreservingFailure(writingAccount), !value.isEmpty { writingAPIKey = value }
             if force || deepLAPIKey.isEmpty, let value = readSecretPreservingFailure("deepLAPIKey"), !value.isEmpty { deepLAPIKey = value }
+            if force || documentAPIKey.isEmpty, let value = readSecretPreservingFailure("documentAPIKey"), !value.isEmpty { documentAPIKey = value }
             if keychainIssue == nil { return }
         }
     }

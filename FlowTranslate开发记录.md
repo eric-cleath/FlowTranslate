@@ -10,11 +10,25 @@ tags:
   - AI写作
   - 开发记录
 status: active
-current_version: 0.6.1
+current_version: 0.7.0
 updated: 2026-08-29
 ---
 
 # PallasOwl（原 FlowTranslate）开发记录与下一版本计划
+
+## 0.7.0（2026-08-29）— 文档翻译首版
+
+- 新增独立“文档翻译”窗口，可从菜单栏进入。
+- 支持 PDF、DOC/DOCX、TXT、Markdown、RTF、PNG、JPG、HEIC、TIFF 等常见格式。
+- 文本型 PDF 直接提取；扫描型 PDF 与图片通过 Apple Vision 在本地 OCR。
+- 长文档按段落自动拆分，逐段翻译并显示解析、OCR 和翻译进度。
+- 支持“仅译文”和“原文与译文”，可暂停并导出 TXT/Markdown。
+- 支持直接从剪贴板粘贴图片（`⌘V`），无需先保存文件即可 OCR 翻译。
+- 新增独立文档引擎设置，可共用文本翻译引擎，或单独选择 AI / DeepL。
+- 优化锁屏唤醒后的钥匙串读取：已有密钥时不再强制读取，减少重复密码提示。
+
+> [!note] 首版边界
+> 当前导出以内容完整为目标，不保留 Word/PDF 的复杂原始排版；EPUB、高保真双语 PDF 与跨启动断点恢复后续完善。
 
 > [!info] 文档范围
 > 本文总结项目从 FlowTranslate 原型到 PallasOwl `0.6.0` 的主要演进，并区分“当前测试重点”和“后续候选功能”。

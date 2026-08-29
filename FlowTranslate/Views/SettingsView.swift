@@ -1,7 +1,7 @@
 import SwiftUI
 
 private enum SettingsCategory: String, CaseIterable, Identifiable {
-    case general = "通用设置", translation = "文本翻译", writing = "AI 文本处理", shortcuts = "快捷键"
+    case general = "通用设置", translation = "文本翻译", writing = "AI 文本处理", document = "文档翻译", shortcuts = "快捷键"
     var id: Self { self }
 }
 
@@ -20,6 +20,7 @@ struct SettingsView: View {
                 case .general: generalSettings
                 case .translation: translationSettings
                 case .writing: writingSettings
+                case .document: documentSettings
                 case .shortcuts: shortcutSettings
                 }
             }.frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -177,6 +178,36 @@ struct SettingsView: View {
                 if duplicateShortcuts { Label("存在重复快捷键，请修改后再使用。", systemImage: "exclamationmark.triangle.fill").font(.caption).foregroundStyle(.orange).padding(.top, 10) }
                 Spacer()
                 HStack { Button("恢复默认") { state.resetShortcuts() }; Spacer(); Button("授予辅助功能权限") { GlobalCaptureService.shared.requestAccessibilityPermission() } }
+            }.padding(12)
+        }
+    }
+
+    private var documentSettings: some View {
+        @Bindable var state = state
+        return GroupBox {
+            VStack(alignment: .leading, spacing: 0) {
+                header("文档翻译", "为 PDF、Word、TXT、Markdown 和图片翻译选择引擎")
+                Divider()
+                settingRow("引擎方式", "可共用当前文本翻译引擎，也可使用独立 AI 或 DeepL") {
+                    Picker("", selection: $state.documentEngineMode) { ForEach(DocumentEngineMode.allCases) { Text($0.rawValue).tag($0) } }
+                        .labelsHidden().frame(width: 220).onChange(of: state.documentEngineMode) { try? state.saveSettings() }
+                }
+                if state.documentEngineMode == .ai {
+                    settingRow("AI 服务", "文档翻译使用的独立服务") {
+                        Picker("", selection: $state.documentAIPreset) { ForEach(AIProviderPreset.allCases) { Text($0.rawValue).tag($0) } }
+                            .labelsHidden().frame(width: 220).onChange(of: state.documentAIPreset) { _, value in state.applyDocumentAIPreset(value) }
+                    }
+                    field("API 地址", "填写完整的 Chat Completions 地址") { TextField("https://…/chat/completions", text: $state.documentEndpoint) }
+                    field("API Key", "密钥仅保存在本机 macOS 钥匙串") { SecureField("sk-…", text: $state.documentAPIKey) }
+                    field("模型", "填写服务支持的模型名称") { TextField("模型名称", text: $state.documentModel) }
+                } else if state.documentEngineMode == .deepl {
+                    Label(state.deepLAPIKey.isEmpty ? "请先在文本翻译设置中配置 DeepL。" : "使用已保存的 DeepL 配置。", systemImage: state.deepLAPIKey.isEmpty ? "exclamationmark.triangle" : "checkmark.circle")
+                        .foregroundStyle(state.deepLAPIKey.isEmpty ? .orange : .green).padding(.vertical, 18)
+                } else {
+                    Label("当前将使用：\(state.translationProvider.rawValue)", systemImage: "link").padding(.vertical, 18)
+                }
+                Spacer()
+                HStack { Spacer(); Button("保存") { try? state.saveSettings() }.buttonStyle(.borderedProminent) }
             }.padding(12)
         }
     }

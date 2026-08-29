@@ -186,3 +186,22 @@ enum DeepLFormality: String, CaseIterable, Identifiable {
         switch self { case .default: nil; case .more: "more"; case .less: "less" }
     }
 }
+
+enum DocumentEngineMode: String, CaseIterable, Identifiable {
+    case shared = "与文本翻译共用引擎"
+    case ai = "独立 AI 引擎"
+    case deepl = "独立 DeepL"
+    var id: Self { self }
+}
+
+enum DocumentOutputStyle: String, CaseIterable, Identifiable {
+    case translated = "仅译文"
+    case bilingual = "原文与译文"
+    var id: Self { self }
+}
+
+struct DocumentTranslationSection: Identifiable, Sendable {
+    let id = UUID()
+    let source: String
+    var translation: String
+}

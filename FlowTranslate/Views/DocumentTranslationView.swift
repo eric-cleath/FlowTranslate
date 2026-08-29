@@ -16,6 +16,7 @@ final class DocumentTranslationModel {
     var progress = 0.0
     var status = "请选择要翻译的文档"
     var isWorking = false
+    var activity = ""
     var errorMessage: String?
     @ObservationIgnored private var task: Task<Void, Never>?
 
@@ -32,7 +33,7 @@ final class DocumentTranslationModel {
         panel.canChooseDirectories = false
         if panel.runModal() == .OK, let url = panel.url {
             fileURL = url; pastedImage = nil; pastedImageName = ""; sourceText = ""; sections = []; progress = 0; errorMessage = nil
-            status = "已选择 \(url.lastPathComponent)"
+            status = "文件载入成功"
         }
     }
 
@@ -43,13 +44,20 @@ final class DocumentTranslationModel {
         }
         pastedImage = image; pastedImageName = "剪贴板图片"; fileURL = nil
         sourceText = ""; sections = []; progress = 0; errorMessage = nil
-        status = "已粘贴图片，点击开始翻译"
+        status = "图片粘贴成功"
     }
 
-    func start(using appState: AppState) {
+    var displayName: String { fileURL?.lastPathComponent ?? pastedImageName }
+    var previewImage: NSImage? {
+        if let pastedImage { return pastedImage }
+        guard let fileURL, ["png", "jpg", "jpeg", "heic", "tif", "tiff", "bmp"].contains(fileURL.pathExtension.lowercased()) else { return nil }
+        return NSImage(contentsOf: fileURL)
+    }
+
+    func extractText() {
         guard fileURL != nil || pastedImage != nil else { return }
         task?.cancel()
-        isWorking = true; sourceText = ""; sections = []; progress = 0; errorMessage = nil
+        isWorking = true; activity = "extract"; sourceText = ""; sections = []; progress = 0; errorMessage = nil
         task = Task {
             do {
                 let service = DocumentImportService()
@@ -64,20 +72,36 @@ final class DocumentTranslationModel {
                     }
                 } else { throw DocumentImportError.unreadable }
                 sourceText = extracted
-                let chunks = DocumentImportService.chunks(from: extracted)
+                progress = 1; status = "文字提取完成，请检查内容后决定是否翻译"; isWorking = false; activity = ""
+            } catch is CancellationError {
+                status = "已停止提取"; isWorking = false; activity = ""
+            } catch {
+                errorMessage = error.localizedDescription; status = "文字提取失败"; isWorking = false; activity = ""
+            }
+        }
+    }
+
+    func translate(using appState: AppState) {
+        let cleaned = sourceText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleaned.isEmpty else { return }
+        task?.cancel()
+        isWorking = true; activity = "translate"; sections = []; progress = 0; errorMessage = nil
+        task = Task {
+            do {
+                let chunks = DocumentImportService.chunks(from: cleaned)
                 guard !chunks.isEmpty else { throw DocumentImportError.noText }
                 for (index, chunk) in chunks.enumerated() {
                     try Task.checkCancellation()
                     status = "正在翻译第 \(index + 1)/\(chunks.count) 段…"
-                    progress = 0.3 + Double(index) / Double(chunks.count) * 0.68
+                    progress = Double(index) / Double(chunks.count)
                     let translated = try await appState.translateDocumentChunk(chunk, source: sourceLanguage, target: targetLanguage)
                     sections.append(.init(source: chunk, translation: translated))
                 }
-                progress = 1; status = "翻译完成"; isWorking = false
+                progress = 1; status = "翻译完成"; isWorking = false; activity = ""
             } catch is CancellationError {
-                status = "已暂停"; isWorking = false
+                status = "已暂停"; isWorking = false; activity = ""
             } catch {
-                errorMessage = error.localizedDescription; status = "处理失败"; isWorking = false
+                errorMessage = error.localizedDescription; status = "翻译失败"; isWorking = false; activity = ""
             }
         }
     }
@@ -95,6 +119,7 @@ final class DocumentTranslationModel {
 
 struct DocumentTranslationView: View {
     @Environment(AppState.self) private var state
+    @Environment(\.openSettings) private var openSettings
     @State private var model = DocumentTranslationModel()
     var embedded = false
 
@@ -111,7 +136,10 @@ struct DocumentTranslationView: View {
                 Spacer()
                 Picker("输出", selection: $model.outputStyle) { ForEach(DocumentOutputStyle.allCases) { Text($0.rawValue).tag($0) } }
                     .frame(width: 150)
+                Button { UserDefaults.standard.set("文档翻译", forKey: "requestedSettingsCategory"); openSettings() } label: { Image(systemName: "gearshape") }
+                    .buttonStyle(.plain).help("打开文档翻译设置")
             }
+            filePreview
             HStack {
                 Picker("原文", selection: $model.sourceLanguage) { ForEach(Language.supported) { Text($0.name).tag($0) } }.labelsHidden()
                 Image(systemName: "arrow.right")
@@ -120,7 +148,7 @@ struct DocumentTranslationView: View {
                 Text("引擎：\(state.documentEngineMode.rawValue)").font(.caption).foregroundStyle(.secondary)
             }
             HSplitView {
-                textPane("提取原文", text: model.sourceText, placeholder: "读取后的文字会显示在这里")
+                sourcePane
                 textPane("翻译结果", text: model.resultText, placeholder: "翻译结果会逐段显示在这里")
             }
             if model.isWorking || model.progress > 0 {
@@ -134,9 +162,36 @@ struct DocumentTranslationView: View {
                 if model.isWorking { Button("暂停", action: model.cancel) }
                 Spacer()
                 Button("导出结果", action: model.export).disabled(model.resultText.isEmpty || model.isWorking)
-                Button("开始翻译") { model.start(using: state) }.buttonStyle(.borderedProminent).disabled((model.fileURL == nil && model.pastedImage == nil) || model.isWorking)
+                Button("提取文字") { model.extractText() }.disabled((model.fileURL == nil && model.pastedImage == nil) || model.isWorking)
+                Button("开始翻译") { model.translate(using: state) }.buttonStyle(.borderedProminent).disabled(model.sourceText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || model.isWorking)
             }
         }.padding(embedded ? 12 : 18).frame(minWidth: embedded ? 720 : 900, minHeight: embedded ? 440 : 620)
+    }
+
+    private var filePreview: some View {
+        HStack(spacing: 14) {
+            Group {
+                if let image = model.previewImage { Image(nsImage: image).resizable().scaledToFit() }
+                else { Image(systemName: model.fileURL?.pathExtension.lowercased() == "pdf" ? "doc.richtext.fill" : "doc.text.fill").resizable().scaledToFit().padding(15).foregroundStyle(.blue) }
+            }.frame(width: 76, height: 64).background(.background.secondary, in: RoundedRectangle(cornerRadius: 9))
+            VStack(alignment: .leading, spacing: 7) {
+                Text(model.displayName.isEmpty ? "尚未选择文件" : model.displayName).fontWeight(.semibold).lineLimit(1)
+                if !model.displayName.isEmpty { Label(model.fileURL == nil ? "图片粘贴成功" : "文件载入成功", systemImage: "checkmark.circle.fill").font(.caption).foregroundStyle(.green) }
+                else { Text("选择文件或从剪贴板粘贴图片").font(.caption).foregroundStyle(.secondary) }
+            }
+            Spacer()
+        }.padding(10).background(Color.accentColor.opacity(0.06), in: RoundedRectangle(cornerRadius: 11))
+    }
+
+    private var sourcePane: some View {
+        @Bindable var model = model
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack { Text("提取原文").font(.headline); Spacer(); if !model.sourceText.isEmpty { Text("可检查并修改").font(.caption).foregroundStyle(.secondary) } }
+            ZStack(alignment: .topLeading) {
+                TextEditor(text: $model.sourceText).font(.system(size: state.editorFontSize)).lineSpacing(state.editorLineSpacing).scrollContentBackground(.hidden).padding(6).background(.background.secondary, in: RoundedRectangle(cornerRadius: 10))
+                if model.sourceText.isEmpty { Text("先点击“提取文字”，确认内容后再开始翻译").foregroundStyle(.tertiary).padding(14).allowsHitTesting(false) }
+            }
+        }.frame(minWidth: 350)
     }
 
     private func textPane(_ title: String, text: String, placeholder: String) -> some View {

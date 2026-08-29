@@ -28,6 +28,10 @@ struct SettingsView: View {
         }
         .padding(22).frame(minWidth: 860, minHeight: 610)
         .onAppear {
+            if let requested = UserDefaults.standard.string(forKey: "requestedSettingsCategory"), let target = SettingsCategory(rawValue: requested) {
+                category = target
+                UserDefaults.standard.removeObject(forKey: "requestedSettingsCategory")
+            }
             selectedTranslationID = state.addedTranslationServices.first?.id ?? ""
             selectedWritingID = state.addedWritingServices.first?.id ?? ""
             selectedDocumentID = state.addedDocumentServices.first?.id ?? ""

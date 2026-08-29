@@ -96,6 +96,7 @@ final class DocumentTranslationModel {
 struct DocumentTranslationView: View {
     @Environment(AppState.self) private var state
     @State private var model = DocumentTranslationModel()
+    var embedded = false
 
     var body: some View {
         @Bindable var model = model
@@ -135,7 +136,7 @@ struct DocumentTranslationView: View {
                 Button("导出结果", action: model.export).disabled(model.resultText.isEmpty || model.isWorking)
                 Button("开始翻译") { model.start(using: state) }.buttonStyle(.borderedProminent).disabled((model.fileURL == nil && model.pastedImage == nil) || model.isWorking)
             }
-        }.padding(18).frame(minWidth: 900, minHeight: 620)
+        }.padding(embedded ? 12 : 18).frame(minWidth: embedded ? 720 : 900, minHeight: embedded ? 440 : 620)
     }
 
     private func textPane(_ title: String, text: String, placeholder: String) -> some View {

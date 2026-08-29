@@ -4,17 +4,26 @@ struct TranslatorView: View {
     @Environment(AppState.self) private var state
     @Environment(\.openWindow) private var openWindow
     @Environment(\.openSettings) private var openSettings
+    @State private var showsDocumentMode = false
 
     var body: some View {
         @Bindable var state = state
         VStack(spacing: 0) {
-            Picker("模式", selection: $state.mode) {
+            Picker("模式", selection: Binding(get: { showsDocumentMode ? "__document" : state.mode.rawValue }, set: { value in
+                if value == "__document" { showsDocumentMode = true }
+                else if let mode = WorkMode(rawValue: value) { showsDocumentMode = false; state.mode = mode }
+            })) {
                 ForEach(WorkMode.allCases) { mode in
-                    Label(LocalizedStringKey(mode.rawValue), systemImage: mode.systemIcon).tag(mode)
+                    Label(LocalizedStringKey(mode.rawValue), systemImage: mode.systemIcon).tag(mode.rawValue)
                 }
+                Label("文档", systemImage: "doc.text").tag("__document")
             }
             .pickerStyle(.segmented)
             .padding()
+
+            if showsDocumentMode {
+                DocumentTranslationView(embedded: true)
+            } else {
 
             HStack {
                 if state.mode == .crossLanguageWriting {
@@ -78,6 +87,7 @@ struct TranslatorView: View {
                 .disabled(state.input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || state.isWorking)
             }
             .padding()
+            }
         }
         .frame(minWidth: 760, minHeight: 520)
         .onAppear { bindGlobalShortcuts() }

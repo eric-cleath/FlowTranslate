@@ -10,11 +10,12 @@ struct SettingsView: View {
     @State private var category: SettingsCategory = .translation
     @State private var selectedTranslationID = ""
     @State private var selectedWritingID = ""
+    @State private var selectedDocumentID = ""
 
     var body: some View {
         VStack(spacing: 18) {
             Picker("设置分类", selection: $category) { ForEach(SettingsCategory.allCases) { Text(LocalizedStringKey($0.rawValue)).tag($0) } }
-                .pickerStyle(.segmented).frame(width: 430)
+                .pickerStyle(.segmented).frame(width: 580)
             Group {
                 switch category {
                 case .general: generalSettings
@@ -29,6 +30,7 @@ struct SettingsView: View {
         .onAppear {
             selectedTranslationID = state.addedTranslationServices.first?.id ?? ""
             selectedWritingID = state.addedWritingServices.first?.id ?? ""
+            selectedDocumentID = state.addedDocumentServices.first?.id ?? ""
         }
     }
 
@@ -183,33 +185,52 @@ struct SettingsView: View {
     }
 
     private var documentSettings: some View {
-        @Bindable var state = state
-        return GroupBox {
-            VStack(alignment: .leading, spacing: 0) {
-                header("文档翻译", "为 PDF、Word、TXT、Markdown 和图片翻译选择引擎")
-                Divider()
-                settingRow("引擎方式", "可共用当前文本翻译引擎，也可使用独立 AI 或 DeepL") {
-                    Picker("", selection: $state.documentEngineMode) { ForEach(DocumentEngineMode.allCases) { Text($0.rawValue).tag($0) } }
-                        .labelsHidden().frame(width: 220).onChange(of: state.documentEngineMode) { try? state.saveSettings() }
-                }
-                if state.documentEngineMode == .ai {
-                    settingRow("AI 服务", "文档翻译使用的独立服务") {
-                        Picker("", selection: $state.documentAIPreset) { ForEach(AIProviderPreset.allCases) { Text($0.rawValue).tag($0) } }
-                            .labelsHidden().frame(width: 220).onChange(of: state.documentAIPreset) { _, value in state.applyDocumentAIPreset(value) }
-                    }
-                    field("API 地址", "填写完整的 Chat Completions 地址") { TextField("https://…/chat/completions", text: $state.documentEndpoint) }
-                    field("API Key", "密钥仅保存在本机 macOS 钥匙串") { SecureField("sk-…", text: $state.documentAPIKey) }
-                    field("模型", "填写服务支持的模型名称") { TextField("模型名称", text: $state.documentModel) }
-                } else if state.documentEngineMode == .deepl {
-                    Label(state.deepLAPIKey.isEmpty ? "请先在文本翻译设置中配置 DeepL。" : "使用已保存的 DeepL 配置。", systemImage: state.deepLAPIKey.isEmpty ? "exclamationmark.triangle" : "checkmark.circle")
-                        .foregroundStyle(state.deepLAPIKey.isEmpty ? .orange : .green).padding(.vertical, 18)
-                } else {
-                    Label("当前将使用：\(state.translationProvider.rawValue)", systemImage: "link").padding(.vertical, 18)
-                }
+        VStack(spacing: 12) {
+            HStack {
+                VStack(alignment: .leading, spacing: 4) { Text("与文本翻译共用引擎").fontWeight(.semibold); Text("开启后，文档翻译自动使用文本翻译的当前引擎。相同配置无需重复保存。").font(.caption).foregroundStyle(.secondary) }
                 Spacer()
-                HStack { Spacer(); Button("保存") { try? state.saveSettings() }.buttonStyle(.borderedProminent) }
-            }.padding(12)
+                Toggle("", isOn: Binding(get: { state.documentEngineMode == .shared }, set: { enabled in
+                    if enabled { state.documentEngineMode = .shared }
+                    else if let first = state.addedDocumentServices.first(where: state.isDocumentServiceEnabled) { state.activateDocumentService(first) }
+                    try? state.saveSettings()
+                })).labelsHidden().toggleStyle(.switch)
+            }.padding(14).background(Color.accentColor.opacity(0.1), in: RoundedRectangle(cornerRadius: 12))
+            if state.documentEngineMode == .shared {
+                GroupBox { VStack(alignment: .leading, spacing: 12) { header("共用文本翻译引擎", "文本翻译当前引擎改变后，文档翻译会自动同步"); Divider(); Label("当前引擎：\(state.translationProvider.rawValue)", systemImage: "checkmark.circle.fill").foregroundStyle(.green); Spacer() }.padding(12) }
+            } else {
+                HStack(alignment: .top, spacing: 18) {
+                    documentServiceList
+                    GroupBox {
+                        if let entry = ServiceEntry.from(id: selectedDocumentID) {
+                            switch entry {
+                            case .ai(let preset): DocumentAIProfileEditor(preset: preset)
+                            case .deepl: documentDeepLDetail
+                            }
+                        } else { emptyServices("尚未添加文档翻译引擎") }
+                    }
+                }
+            }
         }
+    }
+
+    private var documentServiceList: some View {
+        VStack(spacing: 0) {
+            ScrollView { LazyVStack(spacing: 2) { ForEach(state.addedDocumentServices) { entry in
+                HStack(spacing: 9) { Image(systemName: entry.icon).frame(width: 20); Text(entry.name); Spacer(); if state.isCurrentDocumentService(entry) { Text("当前").font(.caption2).foregroundStyle(.blue) }; Toggle("", isOn: Binding(get: { state.isDocumentServiceEnabled(entry) }, set: { state.setDocumentServiceEnabled(entry, enabled: $0) })).labelsHidden().toggleStyle(.switch).controlSize(.mini) }
+                    .padding(.horizontal, 10).padding(.vertical, 9).contentShape(Rectangle()).background(selectedDocumentID == entry.id ? Color.accentColor.opacity(0.16) : .clear).onTapGesture { selectedDocumentID = entry.id }
+            } } }
+            Divider()
+            HStack(spacing: 0) {
+                Menu { ForEach(AIProviderPreset.allCases) { preset in Button(preset.rawValue) { let entry = ServiceEntry.ai(preset); state.addDocumentService(entry); selectedDocumentID = entry.id }.disabled(state.addedDocumentServiceIDs.contains(ServiceEntry.ai(preset).id)) }; Divider(); Button("DeepL 翻译") { state.addDocumentService(.deepl); selectedDocumentID = ServiceEntry.deepl.id }.disabled(state.addedDocumentServiceIDs.contains(ServiceEntry.deepl.id)) } label: { Image(systemName: "plus") }.menuStyle(.borderlessButton).frame(width: 42)
+                Divider().frame(height: 18)
+                Button { guard let entry = ServiceEntry.from(id: selectedDocumentID) else { return }; let next = state.addedDocumentServices.first(where: { $0.id != entry.id })?.id ?? ""; state.removeDocumentService(entry); selectedDocumentID = next } label: { Image(systemName: "minus") }.buttonStyle(.plain).frame(width: 42).disabled(selectedDocumentID.isEmpty)
+                Spacer()
+            }.frame(height: 28)
+        }.frame(width: 255).background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 12))
+    }
+
+    private var documentDeepLDetail: some View {
+        VStack(alignment: .leading, spacing: 12) { header("DeepL 翻译", "文档翻译使用文本翻译中保存的 DeepL 账户配置"); Divider(); Label(state.deepLAPIKey.isEmpty ? "尚未配置 DeepL Key" : "DeepL Key 已配置", systemImage: state.deepLAPIKey.isEmpty ? "exclamationmark.triangle" : "checkmark.circle.fill").foregroundStyle(state.deepLAPIKey.isEmpty ? .orange : .green); Text("如需修改 Key、API 套餐或 Formality，请在“文本翻译”中选择 DeepL。").font(.caption).foregroundStyle(.secondary); Spacer(); HStack { Spacer(); Button("设为当前") { state.activateDocumentService(.deepl) }.buttonStyle(.borderedProminent) } }.padding(12)
     }
 
     private var generalSettings: some View {
@@ -282,5 +303,29 @@ private struct AIProfileEditor: View {
         .task(id: preset.id) { let p = state.loadAIProfile(preset, writing: writing); endpoint = p.endpoint; apiKey = p.apiKey; model = p.model; message = "" }
     }
     private func save() { do { try state.saveAIProfile(preset, writing: writing, endpoint: endpoint, apiKey: apiKey, model: model); message = "已保存" } catch { message = "保存失败：\(error.localizedDescription)" } }
+    private func profileField<C: View>(_ title: String, _ help: String, @ViewBuilder content: () -> C) -> some View { VStack(alignment: .leading, spacing: 7) { Text(title).fontWeight(.medium); content(); Text(help).font(.caption).foregroundStyle(.secondary) }.padding(.vertical, 12).overlay(alignment: .bottom) { Divider() } }
+}
+
+private struct DocumentAIProfileEditor: View {
+    @Environment(AppState.self) private var state
+    let preset: AIProviderPreset
+    @State private var endpoint = ""
+    @State private var apiKey = ""
+    @State private var model = ""
+    @State private var message = ""
+    @State private var validating = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: 5) { Text(preset.rawValue).font(.title3.bold()); Text("用于文档分段翻译").font(.caption).foregroundStyle(.secondary) }.padding(.vertical, 10)
+            Divider()
+            profileField("API 地址", "填写完整的 Chat Completions 地址") { TextField("https://…/chat/completions", text: $endpoint) }
+            profileField("API Key", preset == .ollama ? "本地 Ollama 通常不需要 API Key" : "密钥仅保存在本机 macOS 钥匙串") { SecureField("sk-…", text: $apiKey) }
+            profileField("模型", "填写服务支持的模型名称") { TextField(preset.suggestedModel, text: $model) }
+            Spacer()
+            HStack { Text(message).font(.caption).foregroundStyle(.secondary); Spacer(); Button("设为当前") { save(); state.activateDocumentService(.ai(preset)) }; Button("保存", action: save); Button("验证") { save(); validating = true; Task { message = await state.validateAIProfile(preset, endpoint: endpoint, apiKey: apiKey, model: model); validating = false } }.buttonStyle(.borderedProminent).disabled(validating) }.padding(.top, 12)
+        }.padding(12).task(id: preset.id) { let profile = state.loadDocumentAIProfile(preset); endpoint = profile.endpoint; apiKey = profile.apiKey; model = profile.model; message = "" }
+    }
+    private func save() { do { try state.saveDocumentAIProfile(preset, endpoint: endpoint, apiKey: apiKey, model: model); message = "已保存" } catch { message = "保存失败：\(error.localizedDescription)" } }
     private func profileField<C: View>(_ title: String, _ help: String, @ViewBuilder content: () -> C) -> some View { VStack(alignment: .leading, spacing: 7) { Text(title).fontWeight(.medium); content(); Text(help).font(.caption).foregroundStyle(.secondary) }.padding(.vertical, 12).overlay(alignment: .bottom) { Divider() } }
 }

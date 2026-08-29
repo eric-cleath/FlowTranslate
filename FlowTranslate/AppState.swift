@@ -40,6 +40,9 @@ final class AppState {
     var documentEndpoint = UserDefaults.standard.string(forKey: "documentEndpoint") ?? "https://api.openai.com/v1/chat/completions"
     var documentModel = UserDefaults.standard.string(forKey: "documentModel") ?? "gpt-4.1-mini"
     var documentAPIKey = KeychainStore.read(account: "documentAPIKey")
+    var addedDocumentServiceIDs = UserDefaults.standard.stringArray(forKey: "addedDocumentServiceIDs") ?? []
+    var enabledDocumentAIs: Set<String> = Set(UserDefaults.standard.stringArray(forKey: "enabledDocumentAIs") ?? [])
+    var documentDeepLEnabled = UserDefaults.standard.object(forKey: "documentDeepLEnabled") as? Bool ?? false
     var appLanguage = AppLanguage(rawValue: UserDefaults.standard.string(forKey: "appLanguage") ?? "") ?? .system
     var deepLAPIKey = KeychainStore.read(account: "deepLAPIKey")
     var deepLAPIType = DeepLAPIType(rawValue: UserDefaults.standard.string(forKey: "deepLAPIType") ?? "") ?? .free
@@ -61,6 +64,7 @@ final class AppState {
 
     init() {
         migrateServiceListsIfNeeded()
+        migrateDocumentServiceListIfNeeded()
         loadHistory()
         normalizeTranslationProvider()
     }
@@ -69,6 +73,7 @@ final class AppState {
 
     var addedTranslationServices: [ServiceEntry] { addedTranslationServiceIDs.compactMap(ServiceEntry.from(id:)) }
     var addedWritingServices: [ServiceEntry] { addedWritingServiceIDs.compactMap(ServiceEntry.from(id:)) }
+    var addedDocumentServices: [ServiceEntry] { addedDocumentServiceIDs.compactMap(ServiceEntry.from(id:)) }
 
     func run() async {
         let cleaned = input.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -179,6 +184,9 @@ final class AppState {
         UserDefaults.standard.set(documentAIPreset.rawValue, forKey: "documentAIPreset")
         UserDefaults.standard.set(documentEndpoint, forKey: "documentEndpoint")
         UserDefaults.standard.set(documentModel, forKey: "documentModel")
+        UserDefaults.standard.set(addedDocumentServiceIDs, forKey: "addedDocumentServiceIDs")
+        UserDefaults.standard.set(Array(enabledDocumentAIs), forKey: "enabledDocumentAIs")
+        UserDefaults.standard.set(documentDeepLEnabled, forKey: "documentDeepLEnabled")
         UserDefaults.standard.set(appLanguage.rawValue, forKey: "appLanguage")
         UserDefaults.standard.set(Array(enabledTranslationAIs), forKey: "enabledTranslationAIs")
         UserDefaults.standard.set(editorFontSize, forKey: "editorFontSize")
@@ -445,8 +453,12 @@ final class AppState {
         case .shared:
             guard let current = resolvedTranslationProvider() else { throw ServiceError.invalidConfiguration }
             provider = current
-        case .ai: provider = .ai
-        case .deepl: provider = .deepl
+        case .ai:
+            guard enabledDocumentAIs.contains(documentAIPreset.rawValue) else { throw ServiceError.invalidConfiguration }
+            provider = .ai
+        case .deepl:
+            guard documentDeepLEnabled else { throw ServiceError.invalidConfiguration }
+            provider = .deepl
         }
         if provider == .deepl {
             guard !deepLAPIKey.isEmpty else { throw ServiceError.invalidConfiguration }
@@ -464,9 +476,73 @@ final class AppState {
     }
 
     func applyDocumentAIPreset(_ preset: AIProviderPreset) {
+        try? saveDocumentAIProfile(documentAIPreset)
         documentAIPreset = preset
-        if preset != .custom { documentEndpoint = preset.endpoint; documentModel = preset.suggestedModel }
+        let suffix = profileSuffix(preset)
+        documentEndpoint = UserDefaults.standard.string(forKey: "documentEndpoint.\(suffix)") ?? preset.endpoint
+        documentModel = UserDefaults.standard.string(forKey: "documentModel.\(suffix)") ?? preset.suggestedModel
+        documentAPIKey = KeychainStore.read(account: "documentAPIKey.\(suffix)")
         try? saveSettings()
+    }
+
+    func addDocumentService(_ entry: ServiceEntry) {
+        guard !addedDocumentServiceIDs.contains(entry.id) else { return }
+        addedDocumentServiceIDs.append(entry.id)
+        setDocumentServiceEnabled(entry, enabled: true)
+        activateDocumentService(entry)
+    }
+
+    func removeDocumentService(_ entry: ServiceEntry) {
+        let wasCurrent = isCurrentDocumentService(entry)
+        addedDocumentServiceIDs.removeAll { $0 == entry.id }
+        if case .ai(let preset) = entry { enabledDocumentAIs.remove(preset.rawValue) } else { documentDeepLEnabled = false }
+        if wasCurrent, let next = addedDocumentServices.first(where: isDocumentServiceEnabled) { activateDocumentService(next) }
+        try? saveSettings()
+    }
+
+    func activateDocumentService(_ entry: ServiceEntry) {
+        switch entry {
+        case .ai(let preset): documentEngineMode = .ai; applyDocumentAIPreset(preset)
+        case .deepl: documentEngineMode = .deepl
+        }
+        try? saveSettings()
+    }
+
+    func isDocumentServiceEnabled(_ entry: ServiceEntry) -> Bool {
+        switch entry { case .ai(let preset): enabledDocumentAIs.contains(preset.rawValue); case .deepl: documentDeepLEnabled }
+    }
+
+    func setDocumentServiceEnabled(_ entry: ServiceEntry, enabled: Bool) {
+        switch entry {
+        case .ai(let preset): if enabled { enabledDocumentAIs.insert(preset.rawValue) } else { enabledDocumentAIs.remove(preset.rawValue) }
+        case .deepl: documentDeepLEnabled = enabled
+        }
+        if enabled { activateDocumentService(entry) }
+        else if isCurrentDocumentService(entry), let next = addedDocumentServices.first(where: isDocumentServiceEnabled) { activateDocumentService(next) }
+        try? saveSettings()
+    }
+
+    func isCurrentDocumentService(_ entry: ServiceEntry) -> Bool {
+        switch entry {
+        case .ai(let preset): documentEngineMode == .ai && documentAIPreset == preset && enabledDocumentAIs.contains(preset.rawValue)
+        case .deepl: documentEngineMode == .deepl && documentDeepLEnabled
+        }
+    }
+
+    func loadDocumentAIProfile(_ preset: AIProviderPreset) -> (endpoint: String, apiKey: String, model: String) {
+        let suffix = profileSuffix(preset)
+        return (UserDefaults.standard.string(forKey: "documentEndpoint.\(suffix)") ?? preset.endpoint,
+                KeychainStore.read(account: "documentAPIKey.\(suffix)"),
+                UserDefaults.standard.string(forKey: "documentModel.\(suffix)") ?? preset.suggestedModel)
+    }
+
+    func saveDocumentAIProfile(_ preset: AIProviderPreset, endpoint: String? = nil, apiKey: String? = nil, model: String? = nil) throws {
+        let suffix = profileSuffix(preset)
+        let finalEndpoint = endpoint ?? documentEndpoint, finalKey = apiKey ?? documentAPIKey, finalModel = model ?? documentModel
+        UserDefaults.standard.set(finalEndpoint, forKey: "documentEndpoint.\(suffix)")
+        UserDefaults.standard.set(finalModel, forKey: "documentModel.\(suffix)")
+        if !finalKey.isEmpty { try KeychainStore.save(finalKey, account: "documentAPIKey.\(suffix)") }
+        if preset == documentAIPreset { documentEndpoint = finalEndpoint; documentAPIKey = finalKey; documentModel = finalModel }
     }
 
     func prepareInput(_ text: String, mode: WorkMode = .translate, activate: Bool = true) {
@@ -582,6 +658,16 @@ final class AppState {
             UserDefaults.standard.set(writingModel, forKey: "writingModel.\(writingSuffix)")
             if let key = try? KeychainStore.readValue(account: "writingAPIKey"), !key.isEmpty { try? KeychainStore.save(key, account: "writingAPIKey.\(writingSuffix)") }
         }
+    }
+
+    private func migrateDocumentServiceListIfNeeded() {
+        guard addedDocumentServiceIDs.isEmpty else { return }
+        if documentEngineMode == .deepl {
+            addedDocumentServiceIDs = [ServiceEntry.deepl.id]; documentDeepLEnabled = true
+        } else {
+            addedDocumentServiceIDs = [ServiceEntry.ai(documentAIPreset).id]; enabledDocumentAIs.insert(documentAIPreset.rawValue)
+        }
+        try? saveSettings()
     }
 
     private func reloadSecretsWithRetry(force: Bool = false) async {

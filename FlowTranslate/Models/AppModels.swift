@@ -189,6 +189,7 @@ enum DeepLFormality: String, CaseIterable, Identifiable {
 
 enum DocumentEngineMode: String, CaseIterable, Identifiable {
     case shared = "与文本翻译共用引擎"
+    case sharedWriting = "与 AI 文本处理共用引擎"
     case ai = "独立 AI 引擎"
     case deepl = "独立 DeepL"
     var id: Self { self }

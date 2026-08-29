@@ -14,6 +14,9 @@ final class AppState {
     var output = ""
     var isWorking = false
     var processingStatus = ""
+    var translationSummary = ""
+    var isSummarizing = false
+    var summaryError: String?
     var errorMessage: String?
     var keychainIssue: String?
     var history: [HistoryItem] = []
@@ -78,6 +81,7 @@ final class AppState {
     func run() async {
         let cleaned = input.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleaned.isEmpty else { return }
+        translationSummary = ""; summaryError = nil
         let isTranslation = mode == .translate
         let effectiveSource = mode == .crossLanguageWriting ? (Language.supported.first { $0.code == "zh-Hans" } ?? sourceLanguage) : sourceLanguage
         let effectiveTarget = mode == .crossLanguageWriting ? crossWritingTargetLanguage : targetLanguage
@@ -142,6 +146,42 @@ final class AppState {
         guard sourceLanguage.code != "auto" else { return }
         (sourceLanguage, targetLanguage) = (targetLanguage, sourceLanguage)
         (input, output) = (output, input)
+    }
+
+    func switchMode(to newMode: WorkMode) {
+        guard mode != newMode else { return }
+        mode = newMode
+        clearWorkspace()
+    }
+
+    func clearWorkspace() {
+        input = ""; output = ""; translationSummary = ""
+        errorMessage = nil; summaryError = nil; processingStatus = ""
+    }
+
+    func summarizeTranslation() async {
+        let text = output.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard mode == .translate, !text.isEmpty else { return }
+        await reloadSecretsWithRetry()
+        let sharesTranslationAI = writingUsesTranslationEngine
+        if sharesTranslationAI && resolvedTranslationProvider() == .deepl {
+            summaryError = "DeepL 不支持总结，请在 AI 文本处理中选择 AI 引擎。"; return
+        }
+        if !sharesTranslationAI && (!writingEnabled || !enabledWritingAIs.contains(writingAIPreset.rawValue)) {
+            summaryError = "请先在 AI 文本处理中启用并配置总结使用的 AI 引擎。"; return
+        }
+        let endpoint = sharesTranslationAI ? translationEndpoint : writingEndpoint
+        let preset = sharesTranslationAI ? translationAIPreset : writingAIPreset
+        let storedKey = sharesTranslationAI ? translationAPIKey : writingAPIKey
+        let model = sharesTranslationAI ? translationModel : writingModel
+        let key = storedKey.isEmpty && preset == .ollama ? "ollama" : storedKey
+        guard let url = URL(string: endpoint), !key.isEmpty, !model.isEmpty else { summaryError = ServiceError.invalidConfiguration.localizedDescription; return }
+        isSummarizing = true; translationSummary = ""; summaryError = nil
+        do {
+            translationSummary = try await service.perform(text: text, mode: .summarize, source: targetLanguage, target: targetLanguage,
+                                                             configuration: .init(endpoint: url, apiKey: key, model: model))
+        } catch { summaryError = error.localizedDescription }
+        isSummarizing = false
     }
 
     func copyOutput() {
@@ -453,6 +493,13 @@ final class AppState {
         case .shared:
             guard let current = resolvedTranslationProvider() else { throw ServiceError.invalidConfiguration }
             provider = current
+        case .sharedWriting:
+            if writingUsesTranslationEngine {
+                guard resolvedTranslationProvider() == .ai else { throw ServiceError.invalidConfiguration }
+            } else {
+                guard writingEnabled, enabledWritingAIs.contains(writingAIPreset.rawValue) else { throw ServiceError.invalidConfiguration }
+            }
+            provider = .ai
         case .ai:
             guard enabledDocumentAIs.contains(documentAIPreset.rawValue) else { throw ServiceError.invalidConfiguration }
             provider = .ai
@@ -464,11 +511,12 @@ final class AppState {
             guard !deepLAPIKey.isEmpty else { throw ServiceError.invalidConfiguration }
             return try await deepLService.translate(text: text, target: target, apiKey: deepLAPIKey, apiType: deepLAPIType, formality: deepLFormality)
         }
-        let shared = documentEngineMode == .shared
-        let preset = shared ? translationAIPreset : documentAIPreset
-        let endpoint = shared ? translationEndpoint : documentEndpoint
-        let model = shared ? translationModel : documentModel
-        let storedKey = shared ? translationAPIKey : documentAPIKey
+        let sharesTranslation = documentEngineMode == .shared || (documentEngineMode == .sharedWriting && writingUsesTranslationEngine)
+        let sharesWriting = documentEngineMode == .sharedWriting && !writingUsesTranslationEngine
+        let preset = sharesTranslation ? translationAIPreset : (sharesWriting ? writingAIPreset : documentAIPreset)
+        let endpoint = sharesTranslation ? translationEndpoint : (sharesWriting ? writingEndpoint : documentEndpoint)
+        let model = sharesTranslation ? translationModel : (sharesWriting ? writingModel : documentModel)
+        let storedKey = sharesTranslation ? translationAPIKey : (sharesWriting ? writingAPIKey : documentAPIKey)
         let key = storedKey.isEmpty && preset == .ollama ? "ollama" : storedKey
         guard let url = URL(string: endpoint), !model.isEmpty, !key.isEmpty else { throw ServiceError.invalidConfiguration }
         return try await service.perform(text: text, mode: .translate, source: source, target: target,
@@ -547,9 +595,7 @@ final class AppState {
 
     func prepareInput(_ text: String, mode: WorkMode = .translate, activate: Bool = true) {
         self.mode = mode
-        input = ""
-        output = ""
-        errorMessage = nil
+        clearWorkspace()
         input = text
         if activate { NSApp.activate(ignoringOtherApps: true) }
     }

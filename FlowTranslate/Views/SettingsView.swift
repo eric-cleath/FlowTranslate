@@ -199,8 +199,19 @@ struct SettingsView: View {
                     try? state.saveSettings()
                 })).labelsHidden().toggleStyle(.switch)
             }.padding(14).background(Color.accentColor.opacity(0.1), in: RoundedRectangle(cornerRadius: 12))
+            HStack {
+                VStack(alignment: .leading, spacing: 4) { Text("与 AI 文本处理共用引擎").fontWeight(.semibold); Text("开启后，文档翻译使用润色、跨语写作和总结当前使用的 AI 引擎与配置。").font(.caption).foregroundStyle(.secondary) }
+                Spacer()
+                Toggle("", isOn: Binding(get: { state.documentEngineMode == .sharedWriting }, set: { enabled in
+                    if enabled { state.documentEngineMode = .sharedWriting }
+                    else if let first = state.addedDocumentServices.first(where: state.isDocumentServiceEnabled) { state.activateDocumentService(first) }
+                    try? state.saveSettings()
+                })).labelsHidden().toggleStyle(.switch)
+            }.padding(14).background(Color.accentColor.opacity(0.1), in: RoundedRectangle(cornerRadius: 12))
             if state.documentEngineMode == .shared {
                 GroupBox { VStack(alignment: .leading, spacing: 12) { header("共用文本翻译引擎", "文本翻译当前引擎改变后，文档翻译会自动同步"); Divider(); Label("当前引擎：\(state.translationProvider.rawValue)", systemImage: "checkmark.circle.fill").foregroundStyle(.green); Spacer() }.padding(12) }
+            } else if state.documentEngineMode == .sharedWriting {
+                GroupBox { VStack(alignment: .leading, spacing: 12) { header("共用 AI 文本处理引擎", "AI 文本处理当前引擎改变后，文档翻译会自动同步"); Divider(); if state.writingUsesTranslationEngine && state.translationProvider == .deepl { Label("AI 文本处理当前间接使用 DeepL，无法用于文档 AI 翻译。", systemImage: "exclamationmark.triangle.fill").foregroundStyle(.orange) } else { Label("当前引擎：\(state.writingUsesTranslationEngine ? state.translationAIPreset.rawValue : state.writingAIPreset.rawValue)", systemImage: "checkmark.circle.fill").foregroundStyle(.green) }; Spacer() }.padding(12) }
             } else {
                 HStack(alignment: .top, spacing: 18) {
                     documentServiceList

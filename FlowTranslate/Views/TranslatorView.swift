@@ -10,10 +10,10 @@ struct TranslatorView: View {
         @Bindable var state = state
         VStack(spacing: 0) {
             Picker("模式", selection: Binding(get: { showsDocumentMode ? "__document" : state.mode.rawValue }, set: { value in
-                if value == "__document" { showsDocumentMode = true }
-                else if let mode = WorkMode(rawValue: value) { showsDocumentMode = false; state.mode = mode }
+                if value == "__document" { if !showsDocumentMode { state.clearWorkspace() }; showsDocumentMode = true }
+                else if let mode = WorkMode(rawValue: value) { showsDocumentMode = false; state.switchMode(to: mode) }
             })) {
-                ForEach(WorkMode.allCases) { mode in
+                ForEach(WorkMode.allCases.filter { $0 != .summarize }) { mode in
                     Label(LocalizedStringKey(mode.rawValue), systemImage: mode.systemIcon).tag(mode.rawValue)
                 }
                 Label("文档", systemImage: "doc.text").tag("__document")
@@ -50,6 +50,14 @@ struct TranslatorView: View {
             }
             .padding()
 
+            if state.mode == .translate, !state.translationSummary.isEmpty || state.isSummarizing || state.summaryError != nil {
+                VStack(alignment: .leading, spacing: 7) {
+                    HStack { Label("译文总结", systemImage: "text.alignleft").font(.headline); Spacer(); if state.isSummarizing { ProgressView().controlSize(.small) } }
+                    if let error = state.summaryError { Text(error).font(.callout).foregroundStyle(.red) }
+                    else if !state.translationSummary.isEmpty { Text(state.translationSummary).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading) }
+                }.padding(12).background(Color.accentColor.opacity(0.07), in: RoundedRectangle(cornerRadius: 10)).padding(.horizontal)
+            }
+
             if let error = state.errorMessage {
                 Text(error).foregroundStyle(.red).font(.callout).padding(.horizontal)
             } else if state.isWorking {
@@ -72,8 +80,7 @@ struct TranslatorView: View {
                 }
                 Spacer()
                 Button("清空") {
-                    state.input = ""
-                    state.output = ""
+                    state.clearWorkspace()
                 }
                 Button("复制结果", action: state.copyOutput)
                     .disabled(state.output.isEmpty)
@@ -111,6 +118,7 @@ struct TranslatorView: View {
         capture.onSelection = { showTranslator(text: $0, autoTranslate: true) }
         capture.onScreenshot = { showTranslator(text: $0, autoTranslate: true) }
         capture.onCrossLanguageWriting = { text in
+            showsDocumentMode = false
             state.prepareInput(text, mode: .crossLanguageWriting, activate: false)
             capture.beginCrossWritingProgress()
             Task {
@@ -131,6 +139,7 @@ struct TranslatorView: View {
     }
 
     private func showTranslator(text: String?, autoTranslate: Bool) {
+        showsDocumentMode = false
         if let text { state.prepareInput(text) }
         openWindow(id: "translator")
         NSApp.activate(ignoringOtherApps: true)
@@ -171,6 +180,10 @@ struct TranslatorView: View {
                     .buttonStyle(.plain).disabled(text.wrappedValue.isEmpty)
                 Button { state.copyText(text.wrappedValue) } label: { Label("复制", systemImage: "doc.on.doc") }
                     .buttonStyle(.plain).disabled(text.wrappedValue.isEmpty)
+                if isOutput && state.mode == .translate {
+                    Button { Task { await state.summarizeTranslation() } } label: { Label("总结译文", systemImage: "text.alignleft") }
+                        .buttonStyle(.plain).disabled(text.wrappedValue.isEmpty || state.isWorking || state.isSummarizing)
+                }
                 Spacer()
             }.font(.caption).foregroundStyle(.secondary)
         }

@@ -31,6 +31,11 @@ final class AppState {
     var enabledTranslationAIs: Set<String> = Set(UserDefaults.standard.stringArray(forKey: "enabledTranslationAIs") ?? [AIProviderPreset.openAI.rawValue])
     var deepLEnabled = UserDefaults.standard.object(forKey: "deepLEnabled") as? Bool ?? false
     var writingEnabled = UserDefaults.standard.object(forKey: "writingEnabled") as? Bool ?? true
+    var addedTranslationServiceIDs = UserDefaults.standard.stringArray(forKey: "addedTranslationServiceIDs") ?? []
+    var addedWritingServiceIDs = UserDefaults.standard.stringArray(forKey: "addedWritingServiceIDs") ?? []
+    var enabledWritingAIs: Set<String> = Set(UserDefaults.standard.stringArray(forKey: "enabledWritingAIs") ?? [])
+    var writingUsesTranslationEngine = UserDefaults.standard.object(forKey: "writingUsesTranslationEngine") as? Bool ?? false
+    var appLanguage = AppLanguage(rawValue: UserDefaults.standard.string(forKey: "appLanguage") ?? "") ?? .system
     var deepLAPIKey = KeychainStore.read(account: "deepLAPIKey")
     var deepLAPIType = DeepLAPIType(rawValue: UserDefaults.standard.string(forKey: "deepLAPIType") ?? "") ?? .free
     var deepLFormality = DeepLFormality(rawValue: UserDefaults.standard.string(forKey: "deepLFormality") ?? "") ?? .default
@@ -50,9 +55,15 @@ final class AppState {
     }()
 
     init() {
+        migrateServiceListsIfNeeded()
         loadHistory()
         normalizeTranslationProvider()
     }
+
+    var locale: Locale { Locale(identifier: appLanguage.localeIdentifier ?? Locale.current.identifier) }
+
+    var addedTranslationServices: [ServiceEntry] { addedTranslationServiceIDs.compactMap(ServiceEntry.from(id:)) }
+    var addedWritingServices: [ServiceEntry] { addedWritingServiceIDs.compactMap(ServiceEntry.from(id:)) }
 
     func run() async {
         let cleaned = input.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -60,7 +71,7 @@ final class AppState {
         let isTranslation = mode == .translate
         let effectiveSource = mode == .crossLanguageWriting ? (Language.supported.first { $0.code == "zh-Hans" } ?? sourceLanguage) : sourceLanguage
         let effectiveTarget = mode == .crossLanguageWriting ? crossWritingTargetLanguage : targetLanguage
-        reloadSecretsIfNeeded()
+        await reloadSecretsWithRetry()
         let activeProvider = resolvedTranslationProvider()
         if isTranslation && activeProvider == nil {
             errorMessage = "请先在设置中启用 AI 翻译或 DeepL 翻译服务。"
@@ -79,12 +90,17 @@ final class AppState {
             return
         }
         if isTranslation && activeProvider == .ai && !aiTranslationEnabled { errorMessage = "AI 翻译服务尚未启用。"; return }
-        if !isTranslation && !writingEnabled { errorMessage = "AI 文本处理服务尚未启用。"; return }
-        let endpoint = isTranslation ? translationEndpoint : writingEndpoint
-        let savedAPIKey = isTranslation ? translationAPIKey : writingAPIKey
-        let preset = isTranslation ? translationAIPreset : writingAIPreset
+        if !isTranslation && !writingUsesTranslationEngine && !writingEnabled { errorMessage = "AI 文本处理服务尚未启用。"; return }
+        if !isTranslation && writingUsesTranslationEngine && activeProvider == .deepl {
+            errorMessage = "DeepL 不支持润色、跨语写作和总结，请为 AI 文本处理选择 AI 引擎。"
+            return
+        }
+        let sharesTranslationAI = !isTranslation && writingUsesTranslationEngine
+        let endpoint = (isTranslation || sharesTranslationAI) ? translationEndpoint : writingEndpoint
+        let savedAPIKey = (isTranslation || sharesTranslationAI) ? translationAPIKey : writingAPIKey
+        let preset = (isTranslation || sharesTranslationAI) ? translationAIPreset : writingAIPreset
         let apiKey = savedAPIKey.isEmpty && preset == .ollama ? "ollama" : savedAPIKey
-        let model = isTranslation ? translationModel : writingModel
+        let model = (isTranslation || sharesTranslationAI) ? translationModel : writingModel
         guard let url = URL(string: endpoint), !apiKey.isEmpty, !model.isEmpty else {
             errorMessage = apiKey.isEmpty && keychainIssue != nil ? "暂时无法读取 macOS 钥匙串，请确认电脑已解锁后重试。" : ServiceError.invalidConfiguration.localizedDescription
             return
@@ -150,6 +166,11 @@ final class AppState {
         UserDefaults.standard.set(aiTranslationEnabled, forKey: "aiTranslationEnabled")
         UserDefaults.standard.set(deepLEnabled, forKey: "deepLEnabled")
         UserDefaults.standard.set(writingEnabled, forKey: "writingEnabled")
+        UserDefaults.standard.set(addedTranslationServiceIDs, forKey: "addedTranslationServiceIDs")
+        UserDefaults.standard.set(addedWritingServiceIDs, forKey: "addedWritingServiceIDs")
+        UserDefaults.standard.set(Array(enabledWritingAIs), forKey: "enabledWritingAIs")
+        UserDefaults.standard.set(writingUsesTranslationEngine, forKey: "writingUsesTranslationEngine")
+        UserDefaults.standard.set(appLanguage.rawValue, forKey: "appLanguage")
         UserDefaults.standard.set(Array(enabledTranslationAIs), forKey: "enabledTranslationAIs")
         UserDefaults.standard.set(editorFontSize, forKey: "editorFontSize")
         UserDefaults.standard.set(editorLineSpacing, forKey: "editorLineSpacing")
@@ -160,6 +181,7 @@ final class AppState {
         if !writingAPIKey.isEmpty { try KeychainStore.save(writingAPIKey, account: "writingAPIKey") }
         if !deepLAPIKey.isEmpty { try KeychainStore.save(deepLAPIKey, account: "deepLAPIKey") }
         try saveTranslationAIProfile(translationAIPreset)
+        try saveWritingAIProfile(writingAIPreset)
     }
 
     func selectTranslationProvider(_ provider: TranslationProvider) {
@@ -178,11 +200,18 @@ final class AppState {
 
     func validateAI(writing: Bool) async {
         isValidating = true; validationMessage = "正在验证…"
-        let endpoint = writing ? writingEndpoint : translationEndpoint
-        let savedKey = writing ? writingAPIKey : translationAPIKey
-        let preset = writing ? writingAIPreset : translationAIPreset
+        await reloadSecretsWithRetry()
+        let shared = writing && writingUsesTranslationEngine
+        if shared && resolvedTranslationProvider() == .deepl {
+            validationMessage = "验证失败：DeepL 不支持 AI 文本处理。"
+            isValidating = false
+            return
+        }
+        let endpoint = (writing && !shared) ? writingEndpoint : translationEndpoint
+        let savedKey = (writing && !shared) ? writingAPIKey : translationAPIKey
+        let preset = (writing && !shared) ? writingAIPreset : translationAIPreset
         let key = savedKey.isEmpty && preset == .ollama ? "ollama" : savedKey
-        let model = writing ? writingModel : translationModel
+        let model = (writing && !shared) ? writingModel : translationModel
         do {
             guard let url = URL(string: endpoint), !model.isEmpty else { throw ServiceError.invalidConfiguration }
             validationMessage = try await service.validate(configuration: .init(endpoint: url, apiKey: key, model: model))
@@ -211,6 +240,121 @@ final class AppState {
         try? saveSettings()
     }
 
+    func selectWritingAI(_ preset: AIProviderPreset) {
+        try? saveWritingAIProfile(writingAIPreset)
+        writingAIPreset = preset
+        let suffix = profileSuffix(preset)
+        writingEndpoint = UserDefaults.standard.string(forKey: "writingEndpoint.\(suffix)") ?? preset.endpoint
+        writingModel = UserDefaults.standard.string(forKey: "writingModel.\(suffix)") ?? preset.suggestedModel
+        writingAPIKey = KeychainStore.read(account: "writingAPIKey.\(suffix)")
+        UserDefaults.standard.set(preset.rawValue, forKey: "writingAIPreset")
+        validationMessage = ""
+    }
+
+    func addTranslationService(_ entry: ServiceEntry) {
+        guard !addedTranslationServiceIDs.contains(entry.id) else { return }
+        addedTranslationServiceIDs.append(entry.id)
+        if case .ai(let preset) = entry { enabledTranslationAIs.insert(preset.rawValue) }
+        else { deepLEnabled = true }
+        activateTranslationService(entry)
+        persistTranslationPreferences()
+    }
+
+    func removeTranslationService(_ entry: ServiceEntry) {
+        addedTranslationServiceIDs.removeAll { $0 == entry.id }
+        if case .ai(let preset) = entry { enabledTranslationAIs.remove(preset.rawValue) }
+        else { deepLEnabled = false }
+        aiTranslationEnabled = !enabledTranslationAIs.isEmpty
+        normalizeTranslationProvider()
+        if let next = addedTranslationServices.first(where: { isTranslationServiceEnabled($0) }) { activateTranslationService(next) }
+        persistTranslationPreferences()
+    }
+
+    func activateTranslationService(_ entry: ServiceEntry) {
+        switch entry {
+        case .ai(let preset): selectTranslationAI(preset)
+        case .deepl: selectTranslationProvider(.deepl)
+        }
+    }
+
+    func isTranslationServiceEnabled(_ entry: ServiceEntry) -> Bool {
+        switch entry { case .ai(let preset): enabledTranslationAIs.contains(preset.rawValue); case .deepl: deepLEnabled }
+    }
+
+    func setTranslationServiceEnabled(_ entry: ServiceEntry, enabled: Bool) {
+        switch entry {
+        case .ai(let preset): setTranslationAIEnabled(preset, enabled: enabled)
+        case .deepl: setTranslationServiceEnabled(TranslationProvider.deepl, enabled: enabled)
+        }
+    }
+
+    func isCurrentTranslationService(_ entry: ServiceEntry) -> Bool {
+        switch entry {
+        case .ai(let preset): translationProvider == .ai && translationAIPreset == preset && isTranslationAIEnabled(preset)
+        case .deepl: translationProvider == .deepl && deepLEnabled
+        }
+    }
+
+    func addWritingService(_ preset: AIProviderPreset) {
+        let entry = ServiceEntry.ai(preset)
+        guard !addedWritingServiceIDs.contains(entry.id) else { return }
+        addedWritingServiceIDs.append(entry.id)
+        enabledWritingAIs.insert(preset.rawValue)
+        writingEnabled = true
+        selectWritingAI(preset)
+        try? saveSettings()
+    }
+
+    func removeWritingService(_ preset: AIProviderPreset) {
+        addedWritingServiceIDs.removeAll { $0 == ServiceEntry.ai(preset).id }
+        enabledWritingAIs.remove(preset.rawValue)
+        if writingAIPreset == preset, let next = addedWritingServices.compactMap(\.aiPreset).first(where: { enabledWritingAIs.contains($0.rawValue) }) { selectWritingAI(next) }
+        writingEnabled = !enabledWritingAIs.isEmpty
+        try? saveSettings()
+    }
+
+    func setWritingAIEnabled(_ preset: AIProviderPreset, enabled: Bool) {
+        if enabled { enabledWritingAIs.insert(preset.rawValue); selectWritingAI(preset) }
+        else { enabledWritingAIs.remove(preset.rawValue) }
+        writingEnabled = !enabledWritingAIs.isEmpty
+        try? saveSettings()
+    }
+
+    func setAppLanguage(_ language: AppLanguage) {
+        appLanguage = language
+        UserDefaults.standard.set(language.rawValue, forKey: "appLanguage")
+    }
+
+    func loadAIProfile(_ preset: AIProviderPreset, writing: Bool) -> (endpoint: String, apiKey: String, model: String) {
+        let suffix = profileSuffix(preset)
+        let prefix = writing ? "writing" : "translation"
+        let endpoint = UserDefaults.standard.string(forKey: "\(prefix)Endpoint.\(suffix)") ?? preset.endpoint
+        let model = UserDefaults.standard.string(forKey: "\(prefix)Model.\(suffix)") ?? preset.suggestedModel
+        let key = KeychainStore.read(account: "\(prefix)APIKey.\(suffix)")
+        return (endpoint, key, model)
+    }
+
+    func saveAIProfile(_ preset: AIProviderPreset, writing: Bool, endpoint: String, apiKey: String, model: String) throws {
+        let suffix = profileSuffix(preset)
+        let prefix = writing ? "writing" : "translation"
+        UserDefaults.standard.set(endpoint, forKey: "\(prefix)Endpoint.\(suffix)")
+        UserDefaults.standard.set(model, forKey: "\(prefix)Model.\(suffix)")
+        if !apiKey.isEmpty { try KeychainStore.save(apiKey, account: "\(prefix)APIKey.\(suffix)") }
+        if writing && writingAIPreset == preset {
+            writingEndpoint = endpoint; writingAPIKey = apiKey; writingModel = model
+        } else if !writing && translationAIPreset == preset {
+            translationEndpoint = endpoint; translationAPIKey = apiKey; translationModel = model
+        }
+    }
+
+    func validateAIProfile(_ preset: AIProviderPreset, endpoint: String, apiKey: String, model: String) async -> String {
+        let effectiveKey = apiKey.isEmpty && preset == .ollama ? "ollama" : apiKey
+        do {
+            guard let url = URL(string: endpoint), !model.isEmpty else { throw ServiceError.invalidConfiguration }
+            return try await service.validate(configuration: .init(endpoint: url, apiKey: effectiveKey, model: model))
+        } catch { return "验证失败：\(error.localizedDescription)" }
+    }
+
     func selectTranslationAI(_ preset: AIProviderPreset, activate: Bool = true) {
         try? saveTranslationAIProfile(translationAIPreset)
         translationAIPreset = preset
@@ -233,7 +377,7 @@ final class AppState {
     func setTranslationAIEnabled(_ preset: AIProviderPreset, enabled: Bool) {
         if enabled {
             enabledTranslationAIs.insert(preset.rawValue)
-            selectTranslationAI(preset)
+            if translationProvider != .ai || !enabledTranslationAIs.contains(translationAIPreset.rawValue) { selectTranslationAI(preset) }
         }
         else { enabledTranslationAIs.remove(preset.rawValue) }
         if !enabled, translationAIPreset == preset {
@@ -276,6 +420,10 @@ final class AppState {
         }
         if writingAPIKey.isEmpty { writingAPIKey = readSecret("writingAPIKey") }
         if deepLAPIKey.isEmpty { deepLAPIKey = readSecret("deepLAPIKey") }
+    }
+
+    func reloadSecretsAfterUnlock() {
+        Task { await reloadSecretsWithRetry(force: true) }
     }
 
     func prepareInput(_ text: String, mode: WorkMode = .translate, activate: Bool = true) {
@@ -328,6 +476,7 @@ final class AppState {
         UserDefaults.standard.set(aiTranslationEnabled, forKey: "aiTranslationEnabled")
         UserDefaults.standard.set(deepLEnabled, forKey: "deepLEnabled")
         UserDefaults.standard.set(Array(enabledTranslationAIs), forKey: "enabledTranslationAIs")
+        UserDefaults.standard.set(addedTranslationServiceIDs, forKey: "addedTranslationServiceIDs")
     }
 
 
@@ -336,6 +485,60 @@ final class AppState {
         UserDefaults.standard.set(translationEndpoint, forKey: "translationEndpoint.\(suffix)")
         UserDefaults.standard.set(translationModel, forKey: "translationModel.\(suffix)")
         if !translationAPIKey.isEmpty { try KeychainStore.save(translationAPIKey, account: "translationAPIKey.\(suffix)") }
+    }
+
+    private func saveWritingAIProfile(_ preset: AIProviderPreset) throws {
+        let suffix = profileSuffix(preset)
+        UserDefaults.standard.set(writingEndpoint, forKey: "writingEndpoint.\(suffix)")
+        UserDefaults.standard.set(writingModel, forKey: "writingModel.\(suffix)")
+        if !writingAPIKey.isEmpty { try KeychainStore.save(writingAPIKey, account: "writingAPIKey.\(suffix)") }
+    }
+
+    private func migrateServiceListsIfNeeded() {
+        if addedTranslationServiceIDs.isEmpty {
+            addedTranslationServiceIDs = enabledTranslationAIs.map { ServiceEntry.ai(AIProviderPreset(rawValue: $0) ?? .openAI).id }.sorted()
+            if deepLEnabled { addedTranslationServiceIDs.append(ServiceEntry.deepl.id) }
+            if addedTranslationServiceIDs.isEmpty { addedTranslationServiceIDs = [ServiceEntry.ai(.openAI).id] }
+        }
+        if addedWritingServiceIDs.isEmpty {
+            addedWritingServiceIDs = [ServiceEntry.ai(writingAIPreset).id]
+            enabledWritingAIs = [writingAIPreset.rawValue]
+        }
+        let translationSuffix = profileSuffix(translationAIPreset)
+        if UserDefaults.standard.string(forKey: "translationEndpoint.\(translationSuffix)") == nil {
+            UserDefaults.standard.set(translationEndpoint, forKey: "translationEndpoint.\(translationSuffix)")
+            UserDefaults.standard.set(translationModel, forKey: "translationModel.\(translationSuffix)")
+            if let key = try? KeychainStore.readValue(account: "translationAPIKey"), !key.isEmpty { try? KeychainStore.save(key, account: "translationAPIKey.\(translationSuffix)") }
+        }
+        let writingSuffix = profileSuffix(writingAIPreset)
+        if UserDefaults.standard.string(forKey: "writingEndpoint.\(writingSuffix)") == nil {
+            UserDefaults.standard.set(writingEndpoint, forKey: "writingEndpoint.\(writingSuffix)")
+            UserDefaults.standard.set(writingModel, forKey: "writingModel.\(writingSuffix)")
+            if let key = try? KeychainStore.readValue(account: "writingAPIKey"), !key.isEmpty { try? KeychainStore.save(key, account: "writingAPIKey.\(writingSuffix)") }
+        }
+    }
+
+    private func reloadSecretsWithRetry(force: Bool = false) async {
+        let delays: [UInt64] = [0, 250_000_000, 750_000_000]
+        for delay in delays {
+            if delay > 0 { try? await Task.sleep(nanoseconds: delay) }
+            keychainIssue = nil
+            let translationAccount = "translationAPIKey.\(profileSuffix(translationAIPreset))"
+            let writingAccount = "writingAPIKey.\(profileSuffix(writingAIPreset))"
+            if force || translationAPIKey.isEmpty, let value = readSecretPreservingFailure(translationAccount), !value.isEmpty { translationAPIKey = value }
+            if force || writingAPIKey.isEmpty, let value = readSecretPreservingFailure(writingAccount), !value.isEmpty { writingAPIKey = value }
+            if force || deepLAPIKey.isEmpty, let value = readSecretPreservingFailure("deepLAPIKey"), !value.isEmpty { deepLAPIKey = value }
+            if keychainIssue == nil { return }
+        }
+    }
+
+    private func readSecretPreservingFailure(_ account: String) -> String? {
+        do { return try KeychainStore.readValue(account: account) }
+        catch KeychainStore.KeychainError.status(let status) {
+            if status == errSecItemNotFound { return nil }
+            keychainIssue = "钥匙串暂时不可访问（\(status)）"
+            return nil
+        } catch { keychainIssue = error.localizedDescription; return nil }
     }
 
     private func profileSuffix(_ preset: AIProviderPreset) -> String {

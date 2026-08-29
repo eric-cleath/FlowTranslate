@@ -1,27 +1,29 @@
 import SwiftUI
 
 @main
-struct FlowTranslateApp: App {
+struct PallasOwlApp: App {
     @State private var state = AppState()
 
     init() { GlobalCaptureService.shared.start() }
 
     var body: some Scene {
-        Window("FlowTranslate", id: "translator") {
-            TranslatorView().environment(state)
+        Window("PallasOwl", id: "translator") {
+            TranslatorView().environment(state).environment(\.locale, state.locale)
         }
         .defaultSize(width: 820, height: 560)
 
         Window("历史记录", id: "history") {
-            HistoryView().environment(state)
+            HistoryView().environment(state).environment(\.locale, state.locale)
         }
 
         Settings {
-            SettingsView().environment(state)
+            SettingsView().environment(state).environment(\.locale, state.locale)
         }
 
-        MenuBarExtra("FlowTranslate", systemImage: "character.book.closed.fill") {
-            MenuBarContent().environment(state)
+        MenuBarExtra {
+            MenuBarContent().environment(state).environment(\.locale, state.locale)
+        } label: {
+            Image(nsImage: MenuBarIcon.image)
         }
     }
 }
@@ -32,7 +34,7 @@ private struct MenuBarContent: View {
     @Environment(AppState.self) private var state
 
     var body: some View {
-        Button("打开翻译窗口") { openWindow(id: "translator") }
+        Button("打开翻译窗口") { showInput("") }
         Button("输入翻译  \(shortcut(.input))") { showInput("") }
         Button("划词翻译  \(shortcut(.selection))") { GlobalCaptureService.shared.captureSelection() }
         Button("截图翻译  \(shortcut(.screenshot))") { GlobalCaptureService.shared.captureScreenshot() }
@@ -42,7 +44,7 @@ private struct MenuBarContent: View {
         Button("设置…") { openSettings() }
             .keyboardShortcut(",")
         Divider()
-        Button("退出 FlowTranslate") { NSApplication.shared.terminate(nil) }
+        Button("退出 PallasOwl") { NSApplication.shared.terminate(nil) }
             .keyboardShortcut("q")
     }
 

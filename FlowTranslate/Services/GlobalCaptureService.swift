@@ -67,7 +67,7 @@ final class GlobalCaptureService {
         let indicator = NSProgressIndicator(frame: NSRect(x: 14, y: 12, width: 18, height: 18))
         indicator.style = .spinning
         indicator.startAnimation(nil)
-        let label = NSTextField(labelWithString: "跨语写作处理中…")
+        let label = NSTextField(labelWithString: "PallasOwl 正在处理…")
         label.frame = NSRect(x: 42, y: 10, width: 128, height: 22)
         let panel = NSPanel(
             contentRect: NSRect(x: NSEvent.mouseLocation.x + 14, y: NSEvent.mouseLocation.y - 48, width: 178, height: 42),
@@ -96,7 +96,7 @@ final class GlobalCaptureService {
         postCommandC()
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
             guard pasteboard.changeCount != oldChange, let text = pasteboard.string(forType: .string), !text.isEmpty else {
-                self.onError?("没有读取到选中文字。请确认已选中文字；如仍失败，请在“隐私与安全性 → 辅助功能”中重新添加 FlowTranslate。")
+                self.onError?("没有读取到选中文字。请确认已选中文字；如仍失败，请在“隐私与安全性 → 辅助功能”中重新添加 PallasOwl。")
                 return
             }
             completion(text)
@@ -107,10 +107,10 @@ final class GlobalCaptureService {
     func captureScreenshot() {
         guard CGPreflightScreenCaptureAccess() else {
             CGRequestScreenCaptureAccess()
-            onError?("需要屏幕录制权限。授权后请重启 FlowTranslate，再按 ⌃⌥S。")
+            onError?("需要屏幕录制权限。授权后请重启 PallasOwl，再按截图翻译快捷键。")
             return
         }
-        let fileURL = FileManager.default.temporaryDirectory.appending(path: "FlowTranslate-\(UUID().uuidString).png")
+        let fileURL = FileManager.default.temporaryDirectory.appending(path: "PallasOwl-\(UUID().uuidString).png")
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
         process.arguments = ["-i", fileURL.path]
@@ -118,7 +118,8 @@ final class GlobalCaptureService {
             defer { try? FileManager.default.removeItem(at: fileURL) }
             guard let image = NSImage(contentsOf: fileURL), let tiff = image.tiffRepresentation, let bitmap = NSBitmapImageRep(data: tiff), let cgImage = bitmap.cgImage else { return }
             let request = VNRecognizeTextRequest { request, _ in
-                let text = (request.results as? [VNRecognizedTextObservation])?.compactMap { $0.topCandidates(1).first?.string }.joined(separator: "\n") ?? ""
+                let observations = request.results as? [VNRecognizedTextObservation] ?? []
+                let text = Self.mergeRecognizedLines(observations)
                 Task { @MainActor in
                     if text.isEmpty { self.onError?("截图中没有识别到文字。") }
                     else { self.onScreenshot?(text) }
@@ -139,6 +140,42 @@ final class GlobalCaptureService {
         let hotKeyID = EventHotKeyID(signature: OSType(0x46544C57), id: id)
         RegisterEventHotKey(key, modifiers, hotKeyID, GetApplicationEventTarget(), 0, &ref)
         refs.append(ref)
+    }
+
+    private nonisolated static func mergeRecognizedLines(_ observations: [VNRecognizedTextObservation]) -> String {
+        let lines = observations.compactMap { observation -> (String, CGRect)? in
+            guard let value = observation.topCandidates(1).first?.string.trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty else { return nil }
+            return (value, observation.boundingBox)
+        }.sorted {
+            if abs($0.1.midY - $1.1.midY) > max($0.1.height, $1.1.height) * 0.55 { return $0.1.midY > $1.1.midY }
+            return $0.1.minX < $1.1.minX
+        }
+        guard !lines.isEmpty else { return "" }
+        let heights = lines.map { $0.1.height }.sorted()
+        let typicalHeight = heights[heights.count / 2]
+        var result = lines[0].0
+        for index in 1..<lines.count {
+            let previous = lines[index - 1]
+            let current = lines[index]
+            let verticalGap = previous.1.minY - current.1.maxY
+            let paragraphBreak = verticalGap > typicalHeight * 1.15 || isListStart(current.0)
+            if paragraphBreak { result += "\n\n" + current.0; continue }
+            if result.last == "-" && usesLatinSpacing(previous.0, current.0) {
+                result.removeLast(); result += current.0
+            } else {
+                result += (usesLatinSpacing(previous.0, current.0) ? " " : "") + current.0
+            }
+        }
+        return result
+    }
+
+    private nonisolated static func usesLatinSpacing(_ left: String, _ right: String) -> Bool {
+        guard let lhs = left.unicodeScalars.last, let rhs = right.unicodeScalars.first else { return false }
+        return lhs.value < 0x2E80 && rhs.value < 0x2E80 && !CharacterSet.whitespacesAndNewlines.contains(lhs)
+    }
+
+    private nonisolated static func isListStart(_ text: String) -> Bool {
+        text.range(of: #"^(?:[-•·]|\d+[.)]|[A-Za-z][.)])\s+"#, options: .regularExpression) != nil
     }
 
     private func carbonModifiers(for config: ShortcutConfig) -> UInt32 {

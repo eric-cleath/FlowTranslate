@@ -10,7 +10,7 @@ struct TranslatorView: View {
         VStack(spacing: 0) {
             Picker("模式", selection: $state.mode) {
                 ForEach(WorkMode.allCases) { mode in
-                    Label(mode.rawValue, systemImage: mode.systemIcon).tag(mode)
+                    Label(LocalizedStringKey(mode.rawValue), systemImage: mode.systemIcon).tag(mode)
                 }
             }
             .pickerStyle(.segmented)
@@ -71,7 +71,7 @@ struct TranslatorView: View {
                 Button {
                     Task { await state.run() }
                 } label: {
-                    if state.isWorking { ProgressView().controlSize(.small) } else { Text(state.mode.rawValue) }
+                    if state.isWorking { ProgressView().controlSize(.small) } else { Text(LocalizedStringKey(state.mode.rawValue)) }
                 }
                 .keyboardShortcut(.return, modifiers: .command)
                 .buttonStyle(.borderedProminent)
@@ -82,7 +82,10 @@ struct TranslatorView: View {
         .frame(minWidth: 760, minHeight: 520)
         .onAppear { bindGlobalShortcuts() }
         .onReceive(NSWorkspace.shared.notificationCenter.publisher(for: NSWorkspace.didWakeNotification)) { _ in
-            state.reloadSecretsIfNeeded()
+            state.reloadSecretsAfterUnlock()
+        }
+        .onReceive(NSWorkspace.shared.notificationCenter.publisher(for: NSWorkspace.sessionDidBecomeActiveNotification)) { _ in
+            state.reloadSecretsAfterUnlock()
         }
         .onKeyPress(.return, phases: .down) { press in
             if press.modifiers.contains(.shift) { return .ignored }
@@ -111,6 +114,7 @@ struct TranslatorView: View {
             }
         }
         capture.onError = {
+            state.prepareInput("", activate: false)
             state.errorMessage = $0
             showTranslator(text: nil, autoTranslate: false)
         }
@@ -121,7 +125,7 @@ struct TranslatorView: View {
         openWindow(id: "translator")
         NSApp.activate(ignoringOtherApps: true)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            NSApp.windows.first(where: { $0.title == "FlowTranslate" })?.makeKeyAndOrderFront(nil)
+            NSApp.windows.first(where: { $0.title == "PallasOwl" })?.makeKeyAndOrderFront(nil)
         }
         if autoTranslate {
             Task { await state.run() }
@@ -131,7 +135,7 @@ struct TranslatorView: View {
     private func languagePicker(_ title: String, selection: Binding<Language>, allowsAuto: Bool) -> some View {
         Picker(title, selection: selection) {
             ForEach(Language.supported.filter { allowsAuto || $0.code != "auto" }) { language in
-                Text(language.name).tag(language)
+                Text(LocalizedStringKey(language.name)).tag(language)
             }
         }
         .labelsHidden()

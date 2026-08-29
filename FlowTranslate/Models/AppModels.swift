@@ -119,6 +119,50 @@ enum AIUsage: String, CaseIterable, Identifiable {
     var id: Self { self }
 }
 
+enum AppLanguage: String, CaseIterable, Identifiable {
+    case system
+    case simplifiedChinese = "zh-Hans"
+    case english = "en"
+    case french = "fr"
+    case japanese = "ja"
+
+    var id: Self { self }
+    var displayName: String {
+        switch self {
+        case .system: "跟随系统"
+        case .simplifiedChinese: "简体中文"
+        case .english: "English"
+        case .french: "Français"
+        case .japanese: "日本語"
+        }
+    }
+    var localeIdentifier: String? { self == .system ? nil : rawValue }
+}
+
+enum ServiceEntry: Hashable, Identifiable {
+    case ai(AIProviderPreset)
+    case deepl
+
+    var id: String {
+        switch self { case .ai(let preset): "ai:\(preset.rawValue)"; case .deepl: "deepl" }
+    }
+    var name: String {
+        switch self { case .ai(let preset): preset.rawValue; case .deepl: "DeepL 翻译" }
+    }
+    var icon: String {
+        switch self { case .ai(.ollama): "desktopcomputer"; case .ai: "sparkles"; case .deepl: "character.bubble" }
+    }
+    var aiPreset: AIProviderPreset? {
+        if case .ai(let preset) = self { return preset }
+        return nil
+    }
+    static func from(id: String) -> Self? {
+        if id == "deepl" { return .deepl }
+        guard id.hasPrefix("ai:"), let preset = AIProviderPreset(rawValue: String(id.dropFirst(3))) else { return nil }
+        return .ai(preset)
+    }
+}
+
 enum TranslationProvider: String, CaseIterable, Identifiable, Codable {
     case ai = "AI 翻译"
     case deepl = "DeepL 翻译"

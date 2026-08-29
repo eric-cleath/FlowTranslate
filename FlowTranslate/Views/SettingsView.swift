@@ -1,26 +1,20 @@
 import SwiftUI
 
 private enum SettingsCategory: String, CaseIterable, Identifiable {
-    case general = "通用设置"
-    case translation = "文本翻译"
-    case writing = "AI 文本处理"
-    case shortcuts = "快捷键"
+    case general = "通用设置", translation = "文本翻译", writing = "AI 文本处理", shortcuts = "快捷键"
     var id: Self { self }
 }
 
 struct SettingsView: View {
     @Environment(AppState.self) private var state
     @State private var category: SettingsCategory = .translation
-    @State private var selectedTranslation: TranslationProvider = .ai
+    @State private var selectedTranslationID = ""
+    @State private var selectedWritingID = ""
 
     var body: some View {
-        @Bindable var state = state
         VStack(spacing: 18) {
-            Picker("设置分类", selection: $category) {
-                ForEach(SettingsCategory.allCases) { Text($0.rawValue).tag($0) }
-            }
-            .pickerStyle(.segmented).frame(width: 360)
-
+            Picker("设置分类", selection: $category) { ForEach(SettingsCategory.allCases) { Text(LocalizedStringKey($0.rawValue)).tag($0) } }
+                .pickerStyle(.segmented).frame(width: 430)
             Group {
                 switch category {
                 case .general: generalSettings
@@ -28,171 +22,161 @@ struct SettingsView: View {
                 case .writing: writingSettings
                 case .shortcuts: shortcutSettings
                 }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }.frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .padding(22)
-        .frame(width: 840, height: 590)
-        .background(Color(nsColor: .windowBackgroundColor))
-        .onAppear { selectedTranslation = state.translationProvider }
-        .onChange(of: selectedTranslation) { _, value in
-            state.validationMessage = ""
-            state.selectTranslationProvider(value)
+        .padding(22).frame(minWidth: 860, minHeight: 610)
+        .onAppear {
+            selectedTranslationID = state.addedTranslationServices.first?.id ?? ""
+            selectedWritingID = state.addedWritingServices.first?.id ?? ""
         }
     }
 
     private var translationSettings: some View {
         HStack(alignment: .top, spacing: 18) {
-            serviceSidebar
+            serviceList(entries: state.addedTranslationServices, selectedID: $selectedTranslationID,
+                isEnabled: state.isTranslationServiceEnabled, setEnabled: state.setTranslationServiceEnabled,
+                remove: state.removeTranslationService, addMenu: AnyView(translationAddMenu), showCurrent: true)
             GroupBox {
-                if selectedTranslation == .ai { aiDetail(writing: false) }
-                else { deepLDetail }
+                if let entry = ServiceEntry.from(id: selectedTranslationID) {
+                    switch entry {
+                    case .ai(let preset): AIProfileEditor(preset: preset, writing: false) { state.activateTranslationService(entry) }
+                    case .deepl: deepLDetail
+                    }
+                } else { emptyServices("尚未添加翻译引擎") }
             }
         }
     }
 
-    private var serviceSidebar: some View {
+    private var writingSettings: some View {
+        VStack(spacing: 12) {
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("与文本翻译共用引擎").fontWeight(.semibold)
+                    Text("开启后，润色、跨语写作和总结使用文本翻译当前的 AI 引擎与配置。").font(.caption).foregroundStyle(.secondary)
+                }
+                Spacer()
+                Toggle("", isOn: Binding(get: { state.writingUsesTranslationEngine }, set: { state.writingUsesTranslationEngine = $0; try? state.saveSettings() }))
+                    .labelsHidden().toggleStyle(.switch)
+            }.padding(14).background(Color.accentColor.opacity(0.1), in: RoundedRectangle(cornerRadius: 12))
+
+            if state.writingUsesTranslationEngine {
+                GroupBox {
+                    VStack(alignment: .leading, spacing: 12) {
+                        header("共用文本翻译引擎", "文本翻译当前引擎改变后，AI 文本处理会自动同步")
+                        Divider()
+                        if state.translationProvider == .deepl {
+                            Label("DeepL 不支持 AI 文本处理，请在文本翻译中选择一个 AI 引擎。", systemImage: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+                        } else {
+                            Label("当前引擎：\(state.translationAIPreset.rawValue)", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
+                        }
+                        Spacer()
+                        HStack { Spacer(); Button("验证") { Task { await state.validateAI(writing: true) } }.buttonStyle(.borderedProminent) }
+                    }.padding(12)
+                }
+            } else {
+                HStack(alignment: .top, spacing: 18) {
+                    serviceList(entries: state.addedWritingServices, selectedID: $selectedWritingID,
+                        isEnabled: { $0.aiPreset.map { state.enabledWritingAIs.contains($0.rawValue) } ?? false },
+                        setEnabled: { entry, enabled in if let preset = entry.aiPreset { state.setWritingAIEnabled(preset, enabled: enabled) } },
+                        remove: { entry in if let preset = entry.aiPreset { state.removeWritingService(preset) } },
+                        addMenu: AnyView(writingAddMenu), showCurrent: false)
+                    GroupBox {
+                        if let preset = ServiceEntry.from(id: selectedWritingID)?.aiPreset {
+                            AIProfileEditor(preset: preset, writing: true) { state.selectWritingAI(preset) }
+                        } else { emptyServices("尚未添加 AI 引擎") }
+                    }
+                }
+            }
+        }
+    }
+
+    private func serviceList(entries: [ServiceEntry], selectedID: Binding<String>,
+        isEnabled: @escaping (ServiceEntry) -> Bool,
+        setEnabled: @escaping (ServiceEntry, Bool) -> Void,
+        remove: @escaping (ServiceEntry) -> Void,
+        addMenu: AnyView, showCurrent: Bool) -> some View {
         VStack(spacing: 0) {
             ScrollView {
-                VStack(spacing: 6) {
-                    ForEach(AIProviderPreset.allCases) { preset in
-                        aiServiceRow(preset)
+                LazyVStack(spacing: 2) {
+                    ForEach(entries) { entry in
+                        HStack(spacing: 9) {
+                            Image(systemName: entry.icon).frame(width: 20)
+                            Text(entry.name).lineLimit(1)
+                            Spacer()
+                            if (showCurrent && state.isCurrentTranslationService(entry)) ||
+                                (!showCurrent && entry.aiPreset == state.writingAIPreset && isEnabled(entry)) {
+                                Text("当前").font(.caption2).foregroundStyle(.blue)
+                            }
+                            Toggle("", isOn: Binding(get: { isEnabled(entry) }, set: { setEnabled(entry, $0) }))
+                                .labelsHidden().toggleStyle(.switch).controlSize(.mini)
+                        }
+                        .padding(.horizontal, 10).padding(.vertical, 9).contentShape(Rectangle())
+                        .background(selectedID.wrappedValue == entry.id ? Color.accentColor.opacity(0.16) : .clear)
+                        .onTapGesture { selectedID.wrappedValue = entry.id }
                     }
-                    serviceRow(.deepl, enabled: Binding(get: { state.deepLEnabled }, set: { state.setTranslationServiceEnabled(.deepl, enabled: $0) }))
                 }
             }
-            Text("选择启用的服务作为当前翻译引擎")
-                .font(.caption).foregroundStyle(.secondary).padding(10)
-        }
-        .padding(8).frame(width: 225)
-        .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 12))
-    }
-
-    private func aiServiceRow(_ preset: AIProviderPreset) -> some View {
-        Button {
-            state.selectTranslationAI(preset, activate: state.isTranslationAIEnabled(preset))
-            selectedTranslation = .ai
-        } label: {
-            HStack {
-                Image(systemName: preset == .ollama ? "desktopcomputer" : "sparkles").frame(width: 22)
-                Text(preset.rawValue).fontWeight(.medium).lineLimit(1)
-                Spacer()
-                if state.translationProvider == .ai, state.translationAIPreset == preset {
-                    Text("当前").font(.caption2).foregroundStyle(.blue)
-                }
-                Toggle("", isOn: Binding(
-                    get: { state.isTranslationAIEnabled(preset) },
-                    set: { state.setTranslationAIEnabled(preset, enabled: $0) }
-                ))
-                .labelsHidden().toggleStyle(.switch).controlSize(.mini)
-            }.padding(10).contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .background(selectedTranslation == .ai && state.translationAIPreset == preset ? Color.accentColor.opacity(0.14) : .clear, in: RoundedRectangle(cornerRadius: 8))
-    }
-
-    private func serviceRow(_ provider: TranslationProvider, enabled: Binding<Bool>) -> some View {
-        Button {
-            selectedTranslation = provider
-        } label: {
-            HStack {
-                Image(systemName: provider.icon).frame(width: 22)
-                Text(provider.rawValue).fontWeight(.medium)
-                Spacer()
-                if state.translationProvider == provider { Text("当前").font(.caption2).foregroundStyle(.blue) }
-                Toggle("", isOn: enabled).labelsHidden().toggleStyle(.switch).controlSize(.mini)
-            }.padding(10).contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .background(selectedTranslation == provider ? Color.accentColor.opacity(0.14) : .clear, in: RoundedRectangle(cornerRadius: 8))
-    }
-
-    private func aiDetail(writing: Bool) -> some View {
-        @Bindable var state = state
-        return VStack(alignment: .leading, spacing: 0) {
-            detailHeader(
-                title: writing ? "AI 文本处理" : "\(state.translationAIPreset.rawValue) 翻译",
-                subtitle: writing ? "用于润色、跨语写作和总结" : "支持多种 OpenAI 兼容的 AI 翻译服务"
-            )
             Divider()
-            if writing {
-                field("服务商", help: "选择常用服务后会自动填写 API 地址和推荐模型，也可以选择自定义") {
-                    Picker("", selection: Binding(
-                        get: { state.writingAIPreset },
-                        set: { state.applyAIPreset($0, writing: true) }
-                    )) {
-                        ForEach(AIProviderPreset.allCases) { Text($0.rawValue).tag($0) }
-                    }
-                    .labelsHidden()
-                }
+            HStack(spacing: 0) {
+                addMenu.frame(width: 42, height: 28)
+                Divider().frame(height: 18)
+                Button {
+                    guard let entry = ServiceEntry.from(id: selectedID.wrappedValue) else { return }
+                    let nextID = entries.first(where: { $0.id != entry.id })?.id ?? ""
+                    remove(entry); selectedID.wrappedValue = nextID
+                } label: { Image(systemName: "minus") }
+                .buttonStyle(.plain).frame(width: 42, height: 28).disabled(selectedID.wrappedValue.isEmpty)
+                Spacer()
+            }.padding(.horizontal, 3)
+        }.frame(width: 255).background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 12))
+    }
+
+    private var translationAddMenu: some View {
+        Menu {
+            ForEach(AIProviderPreset.allCases) { preset in
+                Button(preset.rawValue) { state.addTranslationService(.ai(preset)); selectedTranslationID = ServiceEntry.ai(preset).id }
+                    .disabled(state.addedTranslationServiceIDs.contains(ServiceEntry.ai(preset).id))
             }
-            field("API 地址", help: "填写完整的 Chat Completions 地址") {
-                TextField("https://api.openai.com/v1/chat/completions", text: writing ? $state.writingEndpoint : $state.translationEndpoint)
+            Divider()
+            Button("DeepL 翻译") { state.addTranslationService(.deepl); selectedTranslationID = ServiceEntry.deepl.id }
+                .disabled(state.addedTranslationServiceIDs.contains(ServiceEntry.deepl.id))
+        } label: { Image(systemName: "plus") }.menuStyle(.borderlessButton)
+    }
+
+    private var writingAddMenu: some View {
+        Menu {
+            ForEach(AIProviderPreset.allCases) { preset in
+                Button(preset.rawValue) { state.addWritingService(preset); selectedWritingID = ServiceEntry.ai(preset).id }
+                    .disabled(state.addedWritingServiceIDs.contains(ServiceEntry.ai(preset).id))
             }
-            field("API Key", help: "密钥仅保存在本机 macOS 钥匙串") {
-                SecureField("sk-…", text: writing ? $state.writingAPIKey : $state.translationAPIKey)
-            }
-            field("模型", help: "填写服务支持的模型名称") {
-                TextField("gpt-4.1-mini", text: writing ? $state.writingModel : $state.translationModel)
-            }
-            Spacer()
-            validationFooter { Task { await state.validateAI(writing: writing) } }
-        }.padding(12)
+        } label: { Image(systemName: "plus") }.menuStyle(.borderlessButton)
     }
 
     private var deepLDetail: some View {
         @Bindable var state = state
         return VStack(alignment: .leading, spacing: 0) {
-            detailHeader(title: "DeepL 翻译", subtitle: "使用 DeepL 官方 API 进行高质量文本翻译")
-            Divider()
-            field("Key", help: "在 DeepL API 账户中申请 Authentication Key") {
-                SecureField("DeepL Authentication Key", text: $state.deepLAPIKey)
-            }
-            field("API", help: "必须与注册时选择的 DeepL API 套餐一致") {
-                Picker("", selection: $state.deepLAPIType) { ForEach(DeepLAPIType.allCases) { Text($0.rawValue).tag($0) } }.labelsHidden()
-            }
-            field("Formality", help: "仅在 DeepL 支持的目标语言中生效") {
-                Picker("", selection: $state.deepLFormality) { ForEach(DeepLFormality.allCases) { Text($0.rawValue).tag($0) } }.labelsHidden()
-            }
-            field("支持语言", help: "中文、英语、日语、韩语及主要欧洲语言") {
-                Text("由 DeepL API 动态支持").foregroundStyle(.secondary)
-            }
+            header("DeepL 翻译", "使用 DeepL 官方 API 进行高质量文本翻译"); Divider()
+            field("Key", "在 DeepL API 账户中申请 Authentication Key") { SecureField("DeepL Authentication Key", text: $state.deepLAPIKey) }
+            field("API", "必须与注册时选择的 DeepL API 套餐一致") { Picker("", selection: $state.deepLAPIType) { ForEach(DeepLAPIType.allCases) { Text($0.rawValue).tag($0) } }.labelsHidden() }
+            field("Formality", "仅在 DeepL 支持的目标语言中生效") { Picker("", selection: $state.deepLFormality) { ForEach(DeepLFormality.allCases) { Text($0.rawValue).tag($0) } }.labelsHidden() }
             Spacer()
-            validationFooter { Task { await state.validateDeepL() } }
+            HStack {
+                Text(state.validationMessage).font(.caption).foregroundStyle(.secondary); Spacer()
+                Button("设为当前") { state.activateTranslationService(.deepl) }
+                Button("保存") { try? state.saveSettings() }
+                Button("验证") { Task { await state.validateDeepL() } }.buttonStyle(.borderedProminent)
+            }.padding(.top, 12)
         }.padding(12)
-    }
-
-    private var writingSettings: some View {
-        HStack(alignment: .top, spacing: 18) {
-            VStack(spacing: 8) {
-                HStack {
-                    Image(systemName: "wand.and.stars").frame(width: 22)
-                    Text("AI 文本处理").fontWeight(.medium)
-                    Spacer()
-                    Toggle("", isOn: Binding(get: { state.writingEnabled }, set: { state.writingEnabled = $0 })).labelsHidden().toggleStyle(.switch).controlSize(.mini)
-                }.padding(10).background(Color.accentColor.opacity(0.14), in: RoundedRectangle(cornerRadius: 8))
-                Spacer()
-            }.padding(8).frame(width: 225).background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 12))
-            GroupBox { aiDetail(writing: true) }
-        }
     }
 
     private var shortcutSettings: some View {
         GroupBox {
             VStack(spacing: 0) {
-                detailHeader(title: "全局快捷键", subtitle: "在任意 App 中调用 FlowTranslate")
-                Divider()
+                header("全局快捷键", "在任意 App 中调用 PallasOwl"); Divider()
                 ForEach(ShortcutAction.allCases) { shortcutEditor($0) }
-                if hasDuplicateShortcuts {
-                    Label("存在重复快捷键，请修改后再使用。", systemImage: "exclamationmark.triangle.fill")
-                        .font(.caption).foregroundStyle(.orange).padding(.top, 10)
-                }
+                if duplicateShortcuts { Label("存在重复快捷键，请修改后再使用。", systemImage: "exclamationmark.triangle.fill").font(.caption).foregroundStyle(.orange).padding(.top, 10) }
                 Spacer()
-                HStack {
-                    Button("恢复默认") { state.resetShortcuts() }
-                    Spacer()
-                    Button("授予辅助功能权限") { GlobalCaptureService.shared.requestAccessibilityPermission() }
-                }
+                HStack { Button("恢复默认") { state.resetShortcuts() }; Spacer(); Button("授予辅助功能权限") { GlobalCaptureService.shared.requestAccessibilityPermission() } }
             }.padding(12)
         }
     }
@@ -200,76 +184,72 @@ struct SettingsView: View {
     private var generalSettings: some View {
         GroupBox {
             VStack(alignment: .leading, spacing: 0) {
-                detailHeader(title: "通用设置", subtitle: "控制启动方式和翻译窗口的阅读体验")
-                Divider()
-                settingRow("开机自动启动", help: "登录 macOS 后自动启动 FlowTranslate") {
-                    Toggle("", isOn: Binding(get: { state.launchAtLogin }, set: { state.setLaunchAtLogin($0) }))
-                        .labelsHidden().toggleStyle(.switch)
+                header("通用设置", "控制启动方式、界面语言和阅读体验"); Divider()
+                settingRow("开机自动启动", "登录 macOS 后自动启动 PallasOwl") {
+                    Toggle("", isOn: Binding(get: { state.launchAtLogin }, set: { state.setLaunchAtLogin($0) })).labelsHidden().toggleStyle(.switch)
                 }
-                settingRow("正文字号", help: "调整原文和结果区域的字体大小") {
-                    HStack { Slider(value: Binding(get: { state.editorFontSize }, set: { state.editorFontSize = $0; try? state.saveSettings() }), in: 14...22, step: 1).frame(width: 180); Text("\(Int(state.editorFontSize))") }
+                settingRow("界面语言", "默认跟随 macOS；切换后界面立即刷新") {
+                    Picker("", selection: Binding(get: { state.appLanguage }, set: { state.setAppLanguage($0) })) { ForEach(AppLanguage.allCases) { Text($0.displayName).tag($0) } }
+                        .labelsHidden().frame(width: 180)
                 }
-                settingRow("正文行距", help: "调整长段落的阅读间距") {
-                    HStack { Slider(value: Binding(get: { state.editorLineSpacing }, set: { state.editorLineSpacing = $0; try? state.saveSettings() }), in: 2...10, step: 1).frame(width: 180); Text("\(Int(state.editorLineSpacing))") }
-                }
+                settingRow("正文字号", "调整原文和结果区域的字体大小") { slider(Binding(get: { state.editorFontSize }, set: { state.editorFontSize = $0 }), 14...22) }
+                settingRow("正文行距", "调整长段落的阅读间距") { slider(Binding(get: { state.editorLineSpacing }, set: { state.editorLineSpacing = $0 }), 2...10) }
                 Spacer()
             }.padding(12)
         }
     }
 
-    private func detailHeader(title: String, subtitle: String) -> some View {
-        VStack(alignment: .leading, spacing: 5) { Text(title).font(.title3.bold()); Text(subtitle).font(.caption).foregroundStyle(.secondary) }.padding(.vertical, 10)
+    private func slider(_ value: Binding<Double>, _ range: ClosedRange<Double>) -> some View {
+        HStack { Slider(value: Binding(get: { value.wrappedValue }, set: { value.wrappedValue = $0; try? state.saveSettings() }), in: range, step: 1).frame(width: 180); Text("\(Int(value.wrappedValue))") }
     }
-    private func field<Content: View>(_ title: String, help: String, @ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 7) { Text(title).fontWeight(.medium); content(); Text(help).font(.caption).foregroundStyle(.secondary) }.padding(.vertical, 12).overlay(alignment: .bottom) { Divider() }
-    }
-    private func validationFooter(action: @escaping () -> Void) -> some View {
-        HStack {
-            Image(systemName: state.validationMessage.hasPrefix("验证成功") ? "checkmark.circle.fill" : "info.circle")
-                .foregroundStyle(state.validationMessage.hasPrefix("验证成功") ? .green : .secondary)
-            Text(state.validationMessage).font(.caption).foregroundStyle(.secondary)
-            Spacer()
-            Button("保存") { try? state.saveSettings() }
-            Button("验证", action: action).buttonStyle(.borderedProminent).disabled(state.isValidating)
-        }.padding(.top, 12)
-    }
-    private func shortcutRow(_ title: String, keys: String) -> some View {
-        HStack { Text(title); Spacer(); Text(keys).font(.system(.body, design: .monospaced)).padding(.horizontal, 12).padding(.vertical, 6).background(.quaternary, in: RoundedRectangle(cornerRadius: 7)) }.padding(.vertical, 13).overlay(alignment: .bottom) { Divider() }
-    }
-
+    private func emptyServices(_ title: String) -> some View { ContentUnavailableView(title, systemImage: "plus.circle", description: Text("使用左下角的 + 添加引擎")) }
+    private func header(_ title: String, _ subtitle: String) -> some View { VStack(alignment: .leading, spacing: 5) { Text(title).font(.title3.bold()); Text(subtitle).font(.caption).foregroundStyle(.secondary) }.padding(.vertical, 10) }
+    private func field<C: View>(_ title: String, _ help: String, @ViewBuilder content: () -> C) -> some View { VStack(alignment: .leading, spacing: 7) { Text(title).fontWeight(.medium); content(); Text(help).font(.caption).foregroundStyle(.secondary) }.padding(.vertical, 12).overlay(alignment: .bottom) { Divider() } }
+    private func settingRow<C: View>(_ title: String, _ help: String, @ViewBuilder content: () -> C) -> some View { HStack { VStack(alignment: .leading, spacing: 4) { Text(title).fontWeight(.medium); Text(help).font(.caption).foregroundStyle(.secondary) }; Spacer(); content() }.padding(.vertical, 14).overlay(alignment: .bottom) { Divider() } }
     private func shortcutEditor(_ action: ShortcutAction) -> some View {
         let config = state.shortcuts[action] ?? .defaultValue(for: action)
         return HStack {
-            Text(action.rawValue)
-            Spacer()
+            Text(action.rawValue); Spacer()
             Toggle("⌃", isOn: shortcutBinding(action, \.control)).toggleStyle(.button)
             Toggle("⌥", isOn: shortcutBinding(action, \.option)).toggleStyle(.button)
             Toggle("⇧", isOn: shortcutBinding(action, \.shift)).toggleStyle(.button)
             Toggle("⌘", isOn: shortcutBinding(action, \.command)).toggleStyle(.button)
-            Picker("", selection: Binding(get: { config.letter }, set: { value in var next = state.shortcuts[action] ?? config; next.letter = value; state.updateShortcut(action, next) })) {
-                ForEach(Array("ABCDEFGHIJKLMNOPQRSTUVWXYZ").map(String.init), id: \.self) { Text($0).tag($0) }
-            }.labelsHidden().frame(width: 60)
+            Picker("", selection: Binding(get: { config.letter }, set: { value in var next = state.shortcuts[action] ?? config; next.letter = value; state.updateShortcut(action, next) })) { ForEach(Array("ABCDEFGHIJKLMNOPQRSTUVWXYZ").map(String.init), id: \.self) { Text($0).tag($0) } }.labelsHidden().frame(width: 60)
             Text(config.display).font(.system(.body, design: .monospaced)).frame(width: 70)
         }.padding(.vertical, 10).overlay(alignment: .bottom) { Divider() }
     }
+    private func shortcutBinding(_ action: ShortcutAction, _ keyPath: WritableKeyPath<ShortcutConfig, Bool>) -> Binding<Bool> { Binding(get: { (state.shortcuts[action] ?? .defaultValue(for: action))[keyPath: keyPath] }, set: { value in var next = state.shortcuts[action] ?? .defaultValue(for: action); next[keyPath: keyPath] = value; state.updateShortcut(action, next) }) }
+    private var duplicateShortcuts: Bool { let values = ShortcutAction.allCases.compactMap { state.shortcuts[$0]?.display }; return Set(values).count != values.count }
+}
 
-    private func shortcutBinding(_ action: ShortcutAction, _ keyPath: WritableKeyPath<ShortcutConfig, Bool>) -> Binding<Bool> {
-        Binding(get: { (state.shortcuts[action] ?? .defaultValue(for: action))[keyPath: keyPath] }, set: { value in
-            var next = state.shortcuts[action] ?? .defaultValue(for: action)
-            next[keyPath: keyPath] = value
-            state.updateShortcut(action, next)
-        })
-    }
+private struct AIProfileEditor: View {
+    @Environment(AppState.self) private var state
+    let preset: AIProviderPreset
+    let writing: Bool
+    let makeCurrent: () -> Void
+    @State private var endpoint = ""
+    @State private var apiKey = ""
+    @State private var model = ""
+    @State private var message = ""
+    @State private var validating = false
 
-    private var hasDuplicateShortcuts: Bool {
-        let values = ShortcutAction.allCases.compactMap { state.shortcuts[$0]?.display }
-        return Set(values).count != values.count
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: 5) { Text(preset.rawValue).font(.title3.bold()); Text(writing ? "用于润色、跨语写作和总结" : "OpenAI Chat Completions 兼容服务").font(.caption).foregroundStyle(.secondary) }.padding(.vertical, 10)
+            Divider()
+            profileField("API 地址", "填写完整的 Chat Completions 地址") { TextField("https://…/chat/completions", text: $endpoint) }
+            profileField("API Key", preset == .ollama ? "本地 Ollama 通常不需要 API Key" : "密钥仅保存在本机 macOS 钥匙串") { SecureField("sk-…", text: $apiKey) }
+            profileField("模型", "填写服务支持的模型名称") { TextField(preset.suggestedModel, text: $model) }
+            Spacer()
+            HStack {
+                Text(message).font(.caption).foregroundStyle(.secondary); Spacer()
+                Button("设为当前") { save(); makeCurrent() }
+                Button("保存", action: save)
+                Button("验证") { save(); validating = true; Task { message = await state.validateAIProfile(preset, endpoint: endpoint, apiKey: apiKey, model: model); validating = false } }.buttonStyle(.borderedProminent).disabled(validating)
+            }.padding(.top, 12)
+        }.padding(12)
+        .task(id: preset.id) { let p = state.loadAIProfile(preset, writing: writing); endpoint = p.endpoint; apiKey = p.apiKey; model = p.model; message = "" }
     }
-
-    private func settingRow<Content: View>(_ title: String, help: String, @ViewBuilder content: () -> Content) -> some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 4) { Text(title).fontWeight(.medium); Text(help).font(.caption).foregroundStyle(.secondary) }
-            Spacer(); content()
-        }.padding(.vertical, 14).overlay(alignment: .bottom) { Divider() }
-    }
+    private func save() { do { try state.saveAIProfile(preset, writing: writing, endpoint: endpoint, apiKey: apiKey, model: model); message = "已保存" } catch { message = "保存失败：\(error.localizedDescription)" } }
+    private func profileField<C: View>(_ title: String, _ help: String, @ViewBuilder content: () -> C) -> some View { VStack(alignment: .leading, spacing: 7) { Text(title).fontWeight(.medium); content(); Text(help).font(.caption).foregroundStyle(.secondary) }.padding(.vertical, 12).overlay(alignment: .bottom) { Divider() } }
 }

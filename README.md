@@ -1,6 +1,6 @@
-# FlowTranslate
+# PallasOwl
 
-FlowTranslate 是一款原生 macOS 翻译与 AI 文本处理工具，面向输入翻译、全局划词、截图 OCR、润色、总结和跨语写作场景。
+PallasOwl（原 FlowTranslate）是一款原生 macOS 翻译与 AI 文本处理工具，面向输入翻译、全局划词、截图 OCR、润色、总结和跨语写作场景。
 
 ## 主要功能
 
@@ -12,6 +12,9 @@ FlowTranslate 是一款原生 macOS 翻译与 AI 文本处理工具，面向输�
 - 可配置全局快捷键
 - 本地语音朗读、复制和翻译历史
 - API Key 保存在 macOS 钥匙串
+- Bob 风格的 `+ / −` 引擎管理及每个引擎独立验证
+- AI 文本处理可独立配置引擎，也可与文本翻译共用引擎
+- 简体中文、英语、法语和日语界面
 
 ## 系统要求
 
@@ -25,10 +28,10 @@ FlowTranslate 是一款原生 macOS 翻译与 AI 文本处理工具，面向输�
 ```bash
 xcodegen generate
 xcodebuild \
-  -project FlowTranslate.xcodeproj \
-  -scheme FlowTranslate \
+  -project PallasOwl.xcodeproj \
+  -scheme PallasOwl \
   -configuration Debug \
-  -derivedDataPath /tmp/FlowTranslateDebug \
+  -derivedDataPath /tmp/PallasOwlDebug \
   CODE_SIGNING_ALLOWED=NO \
   build
 ```
@@ -43,7 +46,7 @@ xcodebuild \
 
 ## 开发记录
 
-详见 [FlowTranslate开发记录.md](./FlowTranslate开发记录.md)。
+详见 [FlowTranslate开发记录.md](./FlowTranslate开发记录.md)。该文件保留原名，以便 Obsidian 链接和既有记录继续有效。
 
 ## 发布文件
 

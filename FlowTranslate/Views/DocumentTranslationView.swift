@@ -130,7 +130,6 @@ struct DocumentTranslationView: View {
                 Button { model.chooseFile() } label: { Label("选择文档", systemImage: "doc.badge.plus") }
                     .buttonStyle(.borderedProminent)
                 Button { model.pasteImage() } label: { Label("粘贴图片", systemImage: "photo.on.rectangle") }
-                    .keyboardShortcut("v", modifiers: .command)
                 Text(model.fileURL?.lastPathComponent ?? (model.pastedImageName.isEmpty ? "支持 PDF、Word、TXT、Markdown 和图片" : model.pastedImageName))
                     .lineLimit(1).foregroundStyle(.secondary)
                 Spacer()
@@ -188,7 +187,7 @@ struct DocumentTranslationView: View {
             HStack { Text("提取原文").font(.headline); Spacer(); if !model.sourceText.isEmpty { Text("可检查并修改").font(.caption).foregroundStyle(.secondary) } }
             ZStack(alignment: .topLeading) {
                 TextEditor(text: $model.sourceText).font(.system(size: state.editorFontSize)).lineSpacing(state.editorLineSpacing).scrollContentBackground(.hidden).padding(6).background(.background.secondary, in: RoundedRectangle(cornerRadius: 10))
-                if model.sourceText.isEmpty { Text("先点击“提取文字”，确认内容后再开始翻译").foregroundStyle(.tertiary).padding(14).allowsHitTesting(false) }
+                if model.sourceText.isEmpty { Text("可直接输入或粘贴文字，也可选择文件后点击“提取文字”").foregroundStyle(.tertiary).padding(14).allowsHitTesting(false) }
             }
             HStack {
                 if !model.sourceText.isEmpty { Text("已提取 \(model.sourceText.count) 个字符").font(.caption).foregroundStyle(.secondary) }

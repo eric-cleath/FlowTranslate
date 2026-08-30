@@ -44,8 +44,18 @@ struct ShortcutConfig: Codable, Hashable {
 
 enum AIProviderPreset: String, CaseIterable, Identifiable {
     case openAI = "OpenAI"
+    case anthropic = "Anthropic Claude"
     case gemini = "Google Gemini"
     case deepSeek = "DeepSeek"
+    case qwen = "通义千问"
+    case kimi = "Kimi"
+    case doubao = "豆包"
+    case zhipu = "智谱 GLM"
+    case ernie = "百度文心"
+    case hunyuan = "腾讯混元"
+    case minimax = "MiniMax"
+    case siliconFlow = "硅基流动"
+    case xAI = "xAI Grok"
     case groq = "Groq"
     case openRouter = "OpenRouter"
     case ollama = "Ollama（本地）"
@@ -54,8 +64,18 @@ enum AIProviderPreset: String, CaseIterable, Identifiable {
     var endpoint: String {
         switch self {
         case .openAI: "https://api.openai.com/v1/chat/completions"
+        case .anthropic: "https://api.anthropic.com/v1/chat/completions"
         case .gemini: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
         case .deepSeek: "https://api.deepseek.com/chat/completions"
+        case .qwen: "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions"
+        case .kimi: "https://api.moonshot.cn/v1/chat/completions"
+        case .doubao: "https://ark.cn-beijing.volces.com/api/v3/chat/completions"
+        case .zhipu: "https://open.bigmodel.cn/api/paas/v4/chat/completions"
+        case .ernie: "https://qianfan.baidubce.com/v2/chat/completions"
+        case .hunyuan: "https://api.hunyuan.cloud.tencent.com/v1/chat/completions"
+        case .minimax: "https://api.minimax.chat/v1/text/chatcompletion_v2"
+        case .siliconFlow: "https://api.siliconflow.cn/v1/chat/completions"
+        case .xAI: "https://api.x.ai/v1/chat/completions"
         case .groq: "https://api.groq.com/openai/v1/chat/completions"
         case .openRouter: "https://openrouter.ai/api/v1/chat/completions"
         case .ollama: "http://localhost:11434/v1/chat/completions"
@@ -65,8 +85,18 @@ enum AIProviderPreset: String, CaseIterable, Identifiable {
     var suggestedModel: String {
         switch self {
         case .openAI: "gpt-4.1-mini"
+        case .anthropic: "claude-sonnet-4-5"
         case .gemini: "gemini-3.7-flash"
         case .deepSeek: "deepseek-chat"
+        case .qwen: "qwen-plus"
+        case .kimi: "moonshot-v1-8k"
+        case .doubao: "请填写推理接入点 ID"
+        case .zhipu: "glm-4-flash"
+        case .ernie: "ernie-4.5-turbo-32k"
+        case .hunyuan: "hunyuan-turbos-latest"
+        case .minimax: "MiniMax-M2"
+        case .siliconFlow: "Qwen/Qwen3-8B"
+        case .xAI: "grok-4-fast"
         case .groq: "llama-3.3-70b-versatile"
         case .openRouter: "openai/gpt-4.1-mini"
         case .ollama: "qwen3:8b"
@@ -140,23 +170,25 @@ enum AppLanguage: String, CaseIterable, Identifiable {
 }
 
 enum ServiceEntry: Hashable, Identifiable {
+    case system
     case ai(AIProviderPreset)
     case deepl
 
     var id: String {
-        switch self { case .ai(let preset): "ai:\(preset.rawValue)"; case .deepl: "deepl" }
+        switch self { case .system: "system"; case .ai(let preset): "ai:\(preset.rawValue)"; case .deepl: "deepl" }
     }
     var name: String {
-        switch self { case .ai(let preset): preset.rawValue; case .deepl: "DeepL 翻译" }
+        switch self { case .system: "Apple 系统翻译"; case .ai(let preset): preset.rawValue; case .deepl: "DeepL 翻译" }
     }
     var icon: String {
-        switch self { case .ai(.ollama): "desktopcomputer"; case .ai: "sparkles"; case .deepl: "character.bubble" }
+        switch self { case .system: "apple.logo"; case .ai(.ollama): "desktopcomputer"; case .ai: "sparkles"; case .deepl: "character.bubble" }
     }
     var aiPreset: AIProviderPreset? {
         if case .ai(let preset) = self { return preset }
         return nil
     }
     static func from(id: String) -> Self? {
+        if id == "system" { return .system }
         if id == "deepl" { return .deepl }
         guard id.hasPrefix("ai:"), let preset = AIProviderPreset(rawValue: String(id.dropFirst(3))) else { return nil }
         return .ai(preset)
@@ -164,10 +196,11 @@ enum ServiceEntry: Hashable, Identifiable {
 }
 
 enum TranslationProvider: String, CaseIterable, Identifiable, Codable {
+    case system = "Apple 系统翻译"
     case ai = "AI 翻译"
     case deepl = "DeepL 翻译"
     var id: Self { self }
-    var icon: String { self == .ai ? "sparkles" : "character.bubble" }
+    var icon: String { self == .system ? "apple.logo" : (self == .ai ? "sparkles" : "character.bubble") }
 }
 
 enum DeepLAPIType: String, CaseIterable, Identifiable {

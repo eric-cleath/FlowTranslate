@@ -46,6 +46,7 @@ struct SettingsView: View {
             GroupBox {
                 if let entry = ServiceEntry.from(id: selectedTranslationID) {
                     switch entry {
+                    case .system: systemTranslationDetail
                     case .ai(let preset): AIProfileEditor(preset: preset, writing: false) { state.activateTranslationService(entry) }
                     case .deepl: deepLDetail
                     }
@@ -71,8 +72,8 @@ struct SettingsView: View {
                     VStack(alignment: .leading, spacing: 12) {
                         header("共用文本翻译引擎", "文本翻译当前引擎改变后，AI 文本处理会自动同步")
                         Divider()
-                        if state.translationProvider == .deepl {
-                            Label("DeepL 不支持 AI 文本处理，请在文本翻译中选择一个 AI 引擎。", systemImage: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+                        if state.translationProvider != .ai {
+                            Label("当前文本翻译引擎不支持 AI 文本处理，请选择一个 AI 引擎。", systemImage: "exclamationmark.triangle.fill").foregroundStyle(.orange)
                         } else {
                             Label("当前引擎：\(state.translationAIPreset.rawValue)", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
                         }
@@ -110,10 +111,6 @@ struct SettingsView: View {
                             Image(systemName: entry.icon).frame(width: 20)
                             Text(entry.name).lineLimit(1)
                             Spacer()
-                            if (showCurrent && state.isCurrentTranslationService(entry)) ||
-                                (!showCurrent && entry.aiPreset == state.writingAIPreset && isEnabled(entry)) {
-                                Text("当前").font(.caption2).foregroundStyle(.blue)
-                            }
                             Toggle("", isOn: Binding(get: { isEnabled(entry) }, set: { setEnabled(entry, $0) }))
                                 .labelsHidden().toggleStyle(.switch).controlSize(.mini)
                         }
@@ -140,23 +137,44 @@ struct SettingsView: View {
 
     private var translationAddMenu: some View {
         Menu {
-            ForEach(AIProviderPreset.allCases) { preset in
-                Button(preset.rawValue) { state.addTranslationService(.ai(preset)); selectedTranslationID = ServiceEntry.ai(preset).id }
-                    .disabled(state.addedTranslationServiceIDs.contains(ServiceEntry.ai(preset).id))
+            Menu("系统翻译") {
+                addTranslationButton(.system)
+                addTranslationButton(.deepl)
             }
-            Divider()
-            Button("DeepL 翻译") { state.addTranslationService(.deepl); selectedTranslationID = ServiceEntry.deepl.id }
-                .disabled(state.addedTranslationServiceIDs.contains(ServiceEntry.deepl.id))
+            Menu("中国常见大模型") { ForEach(chineseProviders) { addTranslationButton(.ai($0)) } }
+            Menu("国际常见大模型") { ForEach(internationalProviders) { addTranslationButton(.ai($0)) } }
+            Menu("本地与兼容服务") { ForEach(localProviders) { addTranslationButton(.ai($0)) } }
         } label: { Image(systemName: "plus") }.menuStyle(.borderlessButton)
+    }
+
+    private func addTranslationButton(_ entry: ServiceEntry) -> some View {
+        Button(entry.name) { state.addTranslationService(entry); selectedTranslationID = entry.id }
+            .disabled(state.addedTranslationServiceIDs.contains(entry.id))
     }
 
     private var writingAddMenu: some View {
         Menu {
-            ForEach(AIProviderPreset.allCases) { preset in
+            Menu("中国常见大模型") { ForEach(chineseProviders) { preset in
                 Button(preset.rawValue) { state.addWritingService(preset); selectedWritingID = ServiceEntry.ai(preset).id }
                     .disabled(state.addedWritingServiceIDs.contains(ServiceEntry.ai(preset).id))
-            }
+            } }
+            Menu("国际常见大模型") { ForEach(internationalProviders) { preset in Button(preset.rawValue) { state.addWritingService(preset); selectedWritingID = ServiceEntry.ai(preset).id }.disabled(state.addedWritingServiceIDs.contains(ServiceEntry.ai(preset).id)) } }
+            Menu("本地与兼容服务") { ForEach(localProviders) { preset in Button(preset.rawValue) { state.addWritingService(preset); selectedWritingID = ServiceEntry.ai(preset).id }.disabled(state.addedWritingServiceIDs.contains(ServiceEntry.ai(preset).id)) } }
         } label: { Image(systemName: "plus") }.menuStyle(.borderlessButton)
+    }
+
+    private var chineseProviders: [AIProviderPreset] { [.deepSeek, .qwen, .kimi, .doubao, .zhipu, .ernie, .hunyuan, .minimax, .siliconFlow] }
+    private var internationalProviders: [AIProviderPreset] { [.openAI, .anthropic, .gemini, .xAI, .groq, .openRouter] }
+    private var localProviders: [AIProviderPreset] { [.ollama, .custom] }
+
+    private var systemTranslationDetail: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            header("Apple 系统翻译", "使用 macOS Translation Framework，在本机完成翻译")
+            Divider()
+            Label("无需 API Key；需要 macOS 26 或更高版本及已下载的翻译语言包。", systemImage: "checkmark.shield")
+            Text("语言包可在“系统设置 → 通用 → 语言与地区 → 翻译语言”中管理。").font(.caption).foregroundStyle(.secondary)
+            Spacer()
+        }.padding(12)
     }
 
     private var deepLDetail: some View {
@@ -169,7 +187,6 @@ struct SettingsView: View {
             Spacer()
             HStack {
                 Text(state.validationMessage).font(.caption).foregroundStyle(.secondary); Spacer()
-                Button("设为当前") { state.activateTranslationService(.deepl) }
                 Button("保存") { try? state.saveSettings() }
                 Button("验证") { Task { await state.validateDeepL() } }.buttonStyle(.borderedProminent)
             }.padding(.top, 12)
@@ -218,6 +235,7 @@ struct SettingsView: View {
                     GroupBox {
                         if let entry = ServiceEntry.from(id: selectedDocumentID) {
                             switch entry {
+                            case .system: emptyServices("文档翻译暂不使用 Apple 系统引擎")
                             case .ai(let preset): DocumentAIProfileEditor(preset: preset)
                             case .deepl: documentDeepLDetail
                             }
@@ -231,7 +249,7 @@ struct SettingsView: View {
     private var documentServiceList: some View {
         VStack(spacing: 0) {
             ScrollView { LazyVStack(spacing: 2) { ForEach(state.addedDocumentServices) { entry in
-                HStack(spacing: 9) { Image(systemName: entry.icon).frame(width: 20); Text(entry.name); Spacer(); if state.isCurrentDocumentService(entry) { Text("当前").font(.caption2).foregroundStyle(.blue) }; Toggle("", isOn: Binding(get: { state.isDocumentServiceEnabled(entry) }, set: { state.setDocumentServiceEnabled(entry, enabled: $0) })).labelsHidden().toggleStyle(.switch).controlSize(.mini) }
+                HStack(spacing: 9) { Image(systemName: entry.icon).frame(width: 20); Text(entry.name); Spacer(); Toggle("", isOn: Binding(get: { state.isDocumentServiceEnabled(entry) }, set: { state.setDocumentServiceEnabled(entry, enabled: $0) })).labelsHidden().toggleStyle(.switch).controlSize(.mini) }
                     .padding(.horizontal, 10).padding(.vertical, 9).contentShape(Rectangle()).background(selectedDocumentID == entry.id ? Color.accentColor.opacity(0.16) : .clear).onTapGesture { selectedDocumentID = entry.id }
             } } }
             Divider()
@@ -245,7 +263,7 @@ struct SettingsView: View {
     }
 
     private var documentDeepLDetail: some View {
-        VStack(alignment: .leading, spacing: 12) { header("DeepL 翻译", "文档翻译使用文本翻译中保存的 DeepL 账户配置"); Divider(); Label(state.deepLAPIKey.isEmpty ? "尚未配置 DeepL Key" : "DeepL Key 已配置", systemImage: state.deepLAPIKey.isEmpty ? "exclamationmark.triangle" : "checkmark.circle.fill").foregroundStyle(state.deepLAPIKey.isEmpty ? .orange : .green); Text("如需修改 Key、API 套餐或 Formality，请在“文本翻译”中选择 DeepL。").font(.caption).foregroundStyle(.secondary); Spacer(); HStack { Spacer(); Button("设为当前") { state.activateDocumentService(.deepl) }.buttonStyle(.borderedProminent) } }.padding(12)
+        VStack(alignment: .leading, spacing: 12) { header("DeepL 翻译", "文档翻译使用文本翻译中保存的 DeepL 账户配置"); Divider(); Label(state.deepLAPIKey.isEmpty ? "尚未配置 DeepL Key" : "DeepL Key 已配置", systemImage: state.deepLAPIKey.isEmpty ? "exclamationmark.triangle" : "checkmark.circle.fill").foregroundStyle(state.deepLAPIKey.isEmpty ? .orange : .green); Text("如需修改 Key、API 套餐或 Formality，请在“文本翻译”中选择 DeepL。").font(.caption).foregroundStyle(.secondary); Spacer() }.padding(12)
     }
 
     private var generalSettings: some View {
@@ -261,6 +279,15 @@ struct SettingsView: View {
                 }
                 settingRow("正文字号", "调整原文和结果区域的字体大小") { slider(Binding(get: { state.editorFontSize }, set: { state.editorFontSize = $0 }), 14...22) }
                 settingRow("正文行距", "调整长段落的阅读间距") { slider(Binding(get: { state.editorLineSpacing }, set: { state.editorLineSpacing = $0 }), 2...10) }
+                settingRow("朗读语音", "来自 macOS 系统语音；自动模式会按文本语言选择") {
+                    Picker("", selection: Binding(get: { state.selectedVoiceIdentifier }, set: { value in state.setSpeechVoice(value) })) {
+                        Text("自动选择").tag("")
+                        ForEach(state.availableVoices, id: \.identifier) { voice in Text("\(voice.name) · \(voice.language)").tag(voice.identifier) }
+                    }.labelsHidden().frame(width: 260)
+                }
+                settingRow("联系我们", "问题反馈与建议") {
+                    Link("pallasowl2026@gmail.com", destination: URL(string: "mailto:pallasowl2026@gmail.com")!)
+                }
                 Spacer()
             }.padding(12)
         }
@@ -310,7 +337,6 @@ private struct AIProfileEditor: View {
             Spacer()
             HStack {
                 Text(message).font(.caption).foregroundStyle(.secondary); Spacer()
-                Button("设为当前") { save(); makeCurrent() }
                 Button("保存", action: save)
                 Button("验证") { save(); validating = true; Task { message = await state.validateAIProfile(preset, endpoint: endpoint, apiKey: apiKey, model: model); validating = false } }.buttonStyle(.borderedProminent).disabled(validating)
             }.padding(.top, 12)
@@ -338,7 +364,7 @@ private struct DocumentAIProfileEditor: View {
             profileField("API Key", preset == .ollama ? "本地 Ollama 通常不需要 API Key" : "密钥仅保存在本机 macOS 钥匙串") { SecureField("sk-…", text: $apiKey) }
             profileField("模型", "填写服务支持的模型名称") { TextField(preset.suggestedModel, text: $model) }
             Spacer()
-            HStack { Text(message).font(.caption).foregroundStyle(.secondary); Spacer(); Button("设为当前") { save(); state.activateDocumentService(.ai(preset)) }; Button("保存", action: save); Button("验证") { save(); validating = true; Task { message = await state.validateAIProfile(preset, endpoint: endpoint, apiKey: apiKey, model: model); validating = false } }.buttonStyle(.borderedProminent).disabled(validating) }.padding(.top, 12)
+            HStack { Text(message).font(.caption).foregroundStyle(.secondary); Spacer(); Button("保存", action: save); Button("验证") { save(); validating = true; Task { message = await state.validateAIProfile(preset, endpoint: endpoint, apiKey: apiKey, model: model); validating = false } }.buttonStyle(.borderedProminent).disabled(validating) }.padding(.top, 12)
         }.padding(12).task(id: preset.id) { let profile = state.loadDocumentAIProfile(preset); endpoint = profile.endpoint; apiKey = profile.apiKey; model = profile.model; message = "" }
     }
     private func save() { do { try state.saveDocumentAIProfile(preset, endpoint: endpoint, apiKey: apiKey, model: model); message = "已保存" } catch { message = "保存失败：\(error.localizedDescription)" } }

@@ -10,6 +10,7 @@
 		239AF5E941189A61FA7AE978 /* HistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67ECB73A1BA36479C069ED2E /* HistoryView.swift */; };
 		276470F5891E9644D62A9ACF /* AIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4476162E968427A9F9C45DB4 /* AIService.swift */; };
 		2DDB9399ED50C175E37E28D5 /* DeepLService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B045E82AFCB858888E6972C0 /* DeepLService.swift */; };
+		4C73B6A573977418C6ED08E2 /* SystemTranslationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9D0445760535A61469ACEE6 /* SystemTranslationService.swift */; };
 		625C2E6BCD0C1CC2BDB44928 /* KeychainStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7BD591C449BC3048933927EF /* KeychainStore.swift */; };
 		69CC27349F2726D1905A9790 /* GlobalCaptureService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2DBB0E84107DB8666701B7A8 /* GlobalCaptureService.swift */; };
 		6F771E5E93C714C03BC51F86 /* DocumentTranslationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC9493BA0AA78C19CD6CAB44 /* DocumentTranslationView.swift */; };
@@ -42,6 +43,7 @@
 		B045E82AFCB858888E6972C0 /* DeepLService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeepLService.swift; sourceTree = "<group>"; };
 		BD7D675D5A8D9623F3216A03 /* ja */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ja; path = ja.lproj/Localizable.strings; sourceTree = "<group>"; };
 		E6EE74CA4DDB7EA475A0CC39 /* DocumentImportService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentImportService.swift; sourceTree = "<group>"; };
+		F9D0445760535A61469ACEE6 /* SystemTranslationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemTranslationService.swift; sourceTree = "<group>"; };
 		FC5220473A6D0067E052B7C5 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/Localizable.strings"; sourceTree = "<group>"; };
 		FC9493BA0AA78C19CD6CAB44 /* DocumentTranslationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentTranslationView.swift; sourceTree = "<group>"; };
 		FDFFA7A52213F6C782D60E0A /* TranslatorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranslatorView.swift; sourceTree = "<group>"; };
@@ -55,6 +57,7 @@
 				B045E82AFCB858888E6972C0 /* DeepLService.swift */,
 				E6EE74CA4DDB7EA475A0CC39 /* DocumentImportService.swift */,
 				2DBB0E84107DB8666701B7A8 /* GlobalCaptureService.swift */,
+				F9D0445760535A61469ACEE6 /* SystemTranslationService.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -202,6 +205,7 @@
 				625C2E6BCD0C1CC2BDB44928 /* KeychainStore.swift in Sources */,
 				E685E0A83878FA050152C511 /* MenuBarIcon.swift in Sources */,
 				761D674818BF78AFEA977603 /* SettingsView.swift in Sources */,
+				4C73B6A573977418C6ED08E2 /* SystemTranslationService.swift in Sources */,
 				FE83E8ADCE7C1EEE6D21E7FD /* TranslatorView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -275,7 +279,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 75;
+				CURRENT_PROJECT_VERSION = 80;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
@@ -297,7 +301,7 @@
 				INFOPLIST_KEY_CFBundleDisplayName = PallasOwl;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 0.7.5;
+				MARKETING_VERSION = 0.8.0;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
@@ -361,7 +365,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 75;
+				CURRENT_PROJECT_VERSION = 80;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -377,7 +381,7 @@
 				INFOPLIST_KEY_CFBundleDisplayName = PallasOwl;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 0.7.5;
+				MARKETING_VERSION = 0.8.0;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";

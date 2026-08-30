@@ -61,9 +61,9 @@ struct TranslatorView: View {
             if let error = state.errorMessage {
                 Text(error).foregroundStyle(.red).font(.callout).padding(.horizontal)
             } else if state.isWorking {
-                HStack(spacing: 8) {
-                    ProgressView().controlSize(.small)
-                    Text(state.processingStatus).font(.callout).foregroundStyle(.secondary)
+                VStack(spacing: 7) {
+                    if state.mode == .crossLanguageWriting { ProgressView().progressViewStyle(.linear).frame(maxWidth: 360) }
+                    HStack(spacing: 8) { ProgressView().controlSize(.small); Text(state.processingStatus).font(.callout).foregroundStyle(.secondary) }
                 }.padding(.horizontal)
             }
 
@@ -176,7 +176,9 @@ struct TranslatorView: View {
                 }
             }
             HStack(spacing: 14) {
-                Button { state.speak(text.wrappedValue, language: language) } label: { Label("朗读", systemImage: "speaker.wave.2") }
+                Button {
+                    if state.isSpeaking { state.stopSpeaking() } else { state.speak(text.wrappedValue, language: language) }
+                } label: { Label(state.isSpeaking ? "停止" : "朗读", systemImage: state.isSpeaking ? "stop.fill" : "speaker.wave.2") }
                     .buttonStyle(.plain).disabled(text.wrappedValue.isEmpty)
                 Button { state.copyText(text.wrappedValue) } label: { Label("复制", systemImage: "doc.on.doc") }
                     .buttonStyle(.plain).disabled(text.wrappedValue.isEmpty)

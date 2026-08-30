@@ -3,6 +3,12 @@ import AVFoundation
 import Foundation
 import ServiceManagement
 
+private final class SpeechObserver: NSObject, AVSpeechSynthesizerDelegate {
+    var didFinish: (() -> Void)?
+    func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) { didFinish?() }
+    func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didCancel utterance: AVSpeechUtterance) { didFinish?() }
+}
+
 @MainActor
 @Observable
 final class AppState {
@@ -55,17 +61,23 @@ final class AppState {
     var launchAtLogin = SMAppService.mainApp.status == .enabled
     var editorFontSize = UserDefaults.standard.object(forKey: "editorFontSize") as? Double ?? 16
     var editorLineSpacing = UserDefaults.standard.object(forKey: "editorLineSpacing") as? Double ?? 5
+    var selectedVoiceIdentifier = UserDefaults.standard.string(forKey: "selectedVoiceIdentifier") ?? ""
+    var isSpeaking = false
     var shortcuts: [ShortcutAction: ShortcutConfig] = AppState.loadShortcuts()
 
     private let service = AIService()
     private let deepLService = DeepLService()
+    private let systemTranslationService = SystemTranslationService()
     @ObservationIgnored private let speechSynthesizer = AVSpeechSynthesizer()
+    @ObservationIgnored private let speechObserver = SpeechObserver()
     private let historyURL: URL = {
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         return base.appending(path: "FlowTranslate/history.json")
     }()
 
     init() {
+        speechObserver.didFinish = { [weak self] in Task { @MainActor in self?.isSpeaking = false } }
+        speechSynthesizer.delegate = speechObserver
         migrateServiceListsIfNeeded()
         migrateDocumentServiceListIfNeeded()
         loadHistory()
@@ -103,10 +115,21 @@ final class AppState {
             isWorking = false; processingStatus = ""
             return
         }
+        if isTranslation && activeProvider == .system {
+            isWorking = true; processingStatus = "正在使用 Apple 系统翻译…"; output = ""; errorMessage = nil
+            do {
+                let result = try await systemTranslationService.translate(text: cleaned, source: sourceLanguage, target: targetLanguage)
+                output = result
+                history.insert(.init(mode: mode, source: cleaned, result: result, sourceLanguage: sourceLanguage, targetLanguage: targetLanguage), at: 0)
+                saveHistory()
+            } catch { errorMessage = error.localizedDescription }
+            isWorking = false; processingStatus = ""
+            return
+        }
         if isTranslation && activeProvider == .ai && !aiTranslationEnabled { errorMessage = "AI 翻译服务尚未启用。"; return }
         if !isTranslation && !writingUsesTranslationEngine && !writingEnabled { errorMessage = "AI 文本处理服务尚未启用。"; return }
-        if !isTranslation && writingUsesTranslationEngine && activeProvider == .deepl {
-            errorMessage = "DeepL 不支持润色、跨语写作和总结，请为 AI 文本处理选择 AI 引擎。"
+        if !isTranslation && writingUsesTranslationEngine && activeProvider != .ai {
+            errorMessage = "当前文本翻译引擎不支持 AI 文本处理，请选择一个 AI 引擎。"
             return
         }
         let sharesTranslationAI = !isTranslation && writingUsesTranslationEngine
@@ -164,8 +187,8 @@ final class AppState {
         guard mode == .translate, !text.isEmpty else { return }
         await reloadSecretsWithRetry()
         let sharesTranslationAI = writingUsesTranslationEngine
-        if sharesTranslationAI && resolvedTranslationProvider() == .deepl {
-            summaryError = "DeepL 不支持总结，请在 AI 文本处理中选择 AI 引擎。"; return
+        if sharesTranslationAI && resolvedTranslationProvider() != .ai {
+            summaryError = "当前文本翻译引擎不支持总结，请在 AI 文本处理中选择 AI 引擎。"; return
         }
         if !sharesTranslationAI && (!writingEnabled || !enabledWritingAIs.contains(writingAIPreset.rawValue)) {
             summaryError = "请先在 AI 文本处理中启用并配置总结使用的 AI 引擎。"; return
@@ -200,9 +223,25 @@ final class AppState {
         let utterance = AVSpeechUtterance(string: text)
         let code: String
         switch language.code { case "zh-Hans": code = "zh-CN"; case "zh-Hant": code = "zh-TW"; case "ja": code = "ja-JP"; case "ko": code = "ko-KR"; default: code = "en-US" }
-        utterance.voice = AVSpeechSynthesisVoice(language: code)
+        utterance.voice = selectedVoiceIdentifier.isEmpty ? AVSpeechSynthesisVoice(language: code) : AVSpeechSynthesisVoice(identifier: selectedVoiceIdentifier)
         utterance.rate = AVSpeechUtteranceDefaultSpeechRate
+        isSpeaking = true
         speechSynthesizer.speak(utterance)
+    }
+
+    func stopSpeaking() {
+        speechSynthesizer.stopSpeaking(at: .immediate)
+        isSpeaking = false
+    }
+
+    var availableVoices: [AVSpeechSynthesisVoice] {
+        AVSpeechSynthesisVoice.speechVoices().sorted { ($0.language, $0.name) < ($1.language, $1.name) }
+    }
+
+    func setSpeechVoice(_ identifier: String) {
+        selectedVoiceIdentifier = identifier
+        UserDefaults.standard.set(identifier, forKey: "selectedVoiceIdentifier")
+        stopSpeaking()
     }
 
     func saveSettings() throws {
@@ -251,7 +290,10 @@ final class AppState {
 
     func setTranslationServiceEnabled(_ provider: TranslationProvider, enabled: Bool) {
         if provider == .ai { aiTranslationEnabled = enabled }
-        else { deepLEnabled = enabled }
+        else if provider == .deepl {
+            deepLEnabled = enabled
+            if enabled { enabledTranslationAIs.removeAll(); aiTranslationEnabled = false; translationProvider = .deepl }
+        }
         normalizeTranslationProvider()
         persistTranslationPreferences()
     }
@@ -260,8 +302,8 @@ final class AppState {
         isValidating = true; validationMessage = "正在验证…"
         await reloadSecretsWithRetry()
         let shared = writing && writingUsesTranslationEngine
-        if shared && resolvedTranslationProvider() == .deepl {
-            validationMessage = "验证失败：DeepL 不支持 AI 文本处理。"
+        if shared && resolvedTranslationProvider() != .ai {
+            validationMessage = "验证失败：当前文本翻译引擎不支持 AI 文本处理。"
             isValidating = false
             return
         }
@@ -312,16 +354,14 @@ final class AppState {
     func addTranslationService(_ entry: ServiceEntry) {
         guard !addedTranslationServiceIDs.contains(entry.id) else { return }
         addedTranslationServiceIDs.append(entry.id)
-        if case .ai(let preset) = entry { enabledTranslationAIs.insert(preset.rawValue) }
-        else { deepLEnabled = true }
-        activateTranslationService(entry)
+        setTranslationServiceEnabled(entry, enabled: true)
         persistTranslationPreferences()
     }
 
     func removeTranslationService(_ entry: ServiceEntry) {
         addedTranslationServiceIDs.removeAll { $0 == entry.id }
         if case .ai(let preset) = entry { enabledTranslationAIs.remove(preset.rawValue) }
-        else { deepLEnabled = false }
+        if case .deepl = entry { deepLEnabled = false }
         aiTranslationEnabled = !enabledTranslationAIs.isEmpty
         normalizeTranslationProvider()
         if let next = addedTranslationServices.first(where: { isTranslationServiceEnabled($0) }) { activateTranslationService(next) }
@@ -330,24 +370,30 @@ final class AppState {
 
     func activateTranslationService(_ entry: ServiceEntry) {
         switch entry {
+        case .system: translationProvider = .system
         case .ai(let preset): selectTranslationAI(preset)
         case .deepl: selectTranslationProvider(.deepl)
         }
     }
 
     func isTranslationServiceEnabled(_ entry: ServiceEntry) -> Bool {
-        switch entry { case .ai(let preset): enabledTranslationAIs.contains(preset.rawValue); case .deepl: deepLEnabled }
+        switch entry { case .system: translationProvider == .system; case .ai(let preset): enabledTranslationAIs.contains(preset.rawValue); case .deepl: deepLEnabled }
     }
 
     func setTranslationServiceEnabled(_ entry: ServiceEntry, enabled: Bool) {
         switch entry {
+        case .system:
+            if enabled { enabledTranslationAIs.removeAll(); deepLEnabled = false; translationProvider = .system }
+            else if translationProvider == .system { translationProvider = .ai }
         case .ai(let preset): setTranslationAIEnabled(preset, enabled: enabled)
         case .deepl: setTranslationServiceEnabled(TranslationProvider.deepl, enabled: enabled)
         }
+        persistTranslationPreferences()
     }
 
     func isCurrentTranslationService(_ entry: ServiceEntry) -> Bool {
         switch entry {
+        case .system: translationProvider == .system
         case .ai(let preset): translationProvider == .ai && translationAIPreset == preset && isTranslationAIEnabled(preset)
         case .deepl: translationProvider == .deepl && deepLEnabled
         }
@@ -357,7 +403,7 @@ final class AppState {
         let entry = ServiceEntry.ai(preset)
         guard !addedWritingServiceIDs.contains(entry.id) else { return }
         addedWritingServiceIDs.append(entry.id)
-        enabledWritingAIs.insert(preset.rawValue)
+        enabledWritingAIs = [preset.rawValue]
         writingEnabled = true
         selectWritingAI(preset)
         try? saveSettings()
@@ -372,7 +418,7 @@ final class AppState {
     }
 
     func setWritingAIEnabled(_ preset: AIProviderPreset, enabled: Bool) {
-        if enabled { enabledWritingAIs.insert(preset.rawValue); selectWritingAI(preset) }
+        if enabled { enabledWritingAIs = [preset.rawValue]; selectWritingAI(preset) }
         else { enabledWritingAIs.remove(preset.rawValue) }
         writingEnabled = !enabledWritingAIs.isEmpty
         try? saveSettings()
@@ -434,8 +480,9 @@ final class AppState {
 
     func setTranslationAIEnabled(_ preset: AIProviderPreset, enabled: Bool) {
         if enabled {
-            enabledTranslationAIs.insert(preset.rawValue)
-            if translationProvider != .ai || !enabledTranslationAIs.contains(translationAIPreset.rawValue) { selectTranslationAI(preset) }
+            enabledTranslationAIs = [preset.rawValue]
+            deepLEnabled = false
+            selectTranslationAI(preset)
         }
         else { enabledTranslationAIs.remove(preset.rawValue) }
         if !enabled, translationAIPreset == preset {
@@ -511,6 +558,9 @@ final class AppState {
             guard !deepLAPIKey.isEmpty else { throw ServiceError.invalidConfiguration }
             return try await deepLService.translate(text: text, target: target, apiKey: deepLAPIKey, apiType: deepLAPIType, formality: deepLFormality)
         }
+        if provider == .system {
+            return try await systemTranslationService.translate(text: text, source: source, target: target)
+        }
         let sharesTranslation = documentEngineMode == .shared || (documentEngineMode == .sharedWriting && writingUsesTranslationEngine)
         let sharesWriting = documentEngineMode == .sharedWriting && !writingUsesTranslationEngine
         let preset = sharesTranslation ? translationAIPreset : (sharesWriting ? writingAIPreset : documentAIPreset)
@@ -550,6 +600,7 @@ final class AppState {
 
     func activateDocumentService(_ entry: ServiceEntry) {
         switch entry {
+        case .system: return
         case .ai(let preset): documentEngineMode = .ai; applyDocumentAIPreset(preset)
         case .deepl: documentEngineMode = .deepl
         }
@@ -557,13 +608,14 @@ final class AppState {
     }
 
     func isDocumentServiceEnabled(_ entry: ServiceEntry) -> Bool {
-        switch entry { case .ai(let preset): enabledDocumentAIs.contains(preset.rawValue); case .deepl: documentDeepLEnabled }
+        switch entry { case .system: false; case .ai(let preset): enabledDocumentAIs.contains(preset.rawValue); case .deepl: documentDeepLEnabled }
     }
 
     func setDocumentServiceEnabled(_ entry: ServiceEntry, enabled: Bool) {
         switch entry {
-        case .ai(let preset): if enabled { enabledDocumentAIs.insert(preset.rawValue) } else { enabledDocumentAIs.remove(preset.rawValue) }
-        case .deepl: documentDeepLEnabled = enabled
+        case .system: break
+        case .ai(let preset): if enabled { enabledDocumentAIs = [preset.rawValue]; documentDeepLEnabled = false } else { enabledDocumentAIs.remove(preset.rawValue) }
+        case .deepl: documentDeepLEnabled = enabled; if enabled { enabledDocumentAIs.removeAll() }
         }
         if enabled { activateDocumentService(entry) }
         else if isCurrentDocumentService(entry), let next = addedDocumentServices.first(where: isDocumentServiceEnabled) { activateDocumentService(next) }
@@ -572,6 +624,7 @@ final class AppState {
 
     func isCurrentDocumentService(_ entry: ServiceEntry) -> Bool {
         switch entry {
+        case .system: false
         case .ai(let preset): documentEngineMode == .ai && documentAIPreset == preset && enabledDocumentAIs.contains(preset.rawValue)
         case .deepl: documentEngineMode == .deepl && documentDeepLEnabled
         }
@@ -619,6 +672,8 @@ final class AppState {
 
     private func resolvedTranslationProvider() -> TranslationProvider? {
         normalizeTranslationProvider()
+        if translationProvider == .system,
+           addedTranslationServiceIDs.contains(ServiceEntry.system.id) { return .system }
         if translationProvider == .deepl,
            deepLEnabled,
            addedTranslationServiceIDs.contains(ServiceEntry.deepl.id) { return .deepl }
@@ -630,7 +685,9 @@ final class AppState {
 
     private func normalizeTranslationProvider() {
         let currentIsValid: Bool
-        if translationProvider == .deepl {
+        if translationProvider == .system {
+            currentIsValid = addedTranslationServiceIDs.contains(ServiceEntry.system.id)
+        } else if translationProvider == .deepl {
             currentIsValid = deepLEnabled && addedTranslationServiceIDs.contains(ServiceEntry.deepl.id)
         } else {
             currentIsValid = enabledTranslationAIs.contains(translationAIPreset.rawValue)
@@ -640,6 +697,8 @@ final class AppState {
 
         for entry in addedTranslationServices where isTranslationServiceEnabled(entry) {
             switch entry {
+            case .system:
+                translationProvider = .system
             case .deepl:
                 translationProvider = .deepl
             case .ai(let preset):
@@ -687,6 +746,9 @@ final class AppState {
             addedTranslationServiceIDs = enabledTranslationAIs.map { ServiceEntry.ai(AIProviderPreset(rawValue: $0) ?? .openAI).id }.sorted()
             if deepLEnabled { addedTranslationServiceIDs.append(ServiceEntry.deepl.id) }
             if addedTranslationServiceIDs.isEmpty { addedTranslationServiceIDs = [ServiceEntry.ai(.openAI).id] }
+        }
+        if !addedTranslationServiceIDs.contains(ServiceEntry.system.id) {
+            addedTranslationServiceIDs.insert(ServiceEntry.system.id, at: 0)
         }
         if addedWritingServiceIDs.isEmpty {
             addedWritingServiceIDs = [ServiceEntry.ai(writingAIPreset).id]
@@ -743,8 +805,18 @@ final class AppState {
     private func profileSuffix(_ preset: AIProviderPreset) -> String {
         switch preset {
         case .openAI: "openai"
+        case .anthropic: "anthropic"
         case .gemini: "gemini"
         case .deepSeek: "deepseek"
+        case .qwen: "qwen"
+        case .kimi: "kimi"
+        case .doubao: "doubao"
+        case .zhipu: "zhipu"
+        case .ernie: "ernie"
+        case .hunyuan: "hunyuan"
+        case .minimax: "minimax"
+        case .siliconFlow: "siliconflow"
+        case .xAI: "xai"
         case .groq: "groq"
         case .openRouter: "openrouter"
         case .ollama: "ollama"

@@ -1,8 +1,58 @@
+import AppKit
 import SwiftUI
 
 private enum SettingsCategory: String, CaseIterable, Identifiable {
     case general = "通用设置", translation = "文本翻译", writing = "AI 文本处理", document = "文档翻译", shortcuts = "快捷键"
     var id: Self { self }
+}
+
+private struct AddEngineGrid: View {
+    let entries: [ServiceEntry]
+    let existingIDs: Set<String>
+    let add: (ServiceEntry) -> Void
+    private let columns = Array(repeating: GridItem(.fixed(150), spacing: 8), count: 3)
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("添加引擎").font(.headline)
+            LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
+                ForEach(entries) { entry in
+                    Button { add(entry) } label: {
+                        HStack { Image(systemName: existingIDs.contains(entry.id) ? "checkmark.circle.fill" : entry.icon); Text(entry.name).lineLimit(1); Spacer() }
+                            .frame(maxWidth: .infinity).padding(.horizontal, 9).padding(.vertical, 7)
+                    }.buttonStyle(.plain).background(.background.secondary, in: RoundedRectangle(cornerRadius: 7)).disabled(existingIDs.contains(entry.id))
+                }
+            }
+        }.padding(14).frame(width: 490)
+    }
+}
+
+private struct ModelComboBox: NSViewRepresentable {
+    @Binding var text: String
+    let items: [String]
+
+    func makeCoordinator() -> Coordinator { Coordinator(self) }
+    func makeNSView(context: Context) -> NSComboBox {
+        let box = NSComboBox()
+        box.usesDataSource = false
+        box.completes = true
+        box.delegate = context.coordinator
+        box.addItems(withObjectValues: items)
+        box.stringValue = text
+        return box
+    }
+    func updateNSView(_ box: NSComboBox, context: Context) {
+        context.coordinator.parent = self
+        let values = box.objectValues.compactMap { $0 as? String }
+        if values != items { box.removeAllItems(); box.addItems(withObjectValues: items) }
+        if box.stringValue != text { box.stringValue = text }
+    }
+    final class Coordinator: NSObject, NSComboBoxDelegate, NSTextFieldDelegate {
+        var parent: ModelComboBox
+        init(_ parent: ModelComboBox) { self.parent = parent }
+        func controlTextDidChange(_ notification: Notification) { if let box = notification.object as? NSComboBox { parent.text = box.stringValue } }
+        func comboBoxSelectionDidChange(_ notification: Notification) { if let box = notification.object as? NSComboBox { parent.text = box.stringValue } }
+    }
 }
 
 struct SettingsView: View {
@@ -11,6 +61,9 @@ struct SettingsView: View {
     @State private var selectedTranslationID = ""
     @State private var selectedWritingID = ""
     @State private var selectedDocumentID = ""
+    @State private var showsTranslationEngines = false
+    @State private var showsWritingEngines = false
+    @State private var showsDocumentEngines = false
 
     var body: some View {
         VStack(spacing: 18) {
@@ -136,15 +189,13 @@ struct SettingsView: View {
     }
 
     private var translationAddMenu: some View {
-        Menu {
-            Menu("系统翻译") {
-                addTranslationButton(.system)
-                addTranslationButton(.deepl)
+        Button { showsTranslationEngines.toggle() } label: { Image(systemName: "plus") }
+            .buttonStyle(.plain)
+            .popover(isPresented: $showsTranslationEngines) {
+                AddEngineGrid(entries: allTranslationEntries, existingIDs: Set(state.addedTranslationServiceIDs)) { entry in
+                    state.addTranslationService(entry); selectedTranslationID = entry.id; showsTranslationEngines = false
+                }
             }
-            Menu("中国常见大模型") { ForEach(chineseProviders) { addTranslationButton(.ai($0)) } }
-            Menu("国际常见大模型") { ForEach(internationalProviders) { addTranslationButton(.ai($0)) } }
-            Menu("本地与兼容服务") { ForEach(localProviders) { addTranslationButton(.ai($0)) } }
-        } label: { Image(systemName: "plus") }.menuStyle(.borderlessButton)
     }
 
     private func addTranslationButton(_ entry: ServiceEntry) -> some View {
@@ -153,19 +204,20 @@ struct SettingsView: View {
     }
 
     private var writingAddMenu: some View {
-        Menu {
-            Menu("中国常见大模型") { ForEach(chineseProviders) { preset in
-                Button(preset.rawValue) { state.addWritingService(preset); selectedWritingID = ServiceEntry.ai(preset).id }
-                    .disabled(state.addedWritingServiceIDs.contains(ServiceEntry.ai(preset).id))
-            } }
-            Menu("国际常见大模型") { ForEach(internationalProviders) { preset in Button(preset.rawValue) { state.addWritingService(preset); selectedWritingID = ServiceEntry.ai(preset).id }.disabled(state.addedWritingServiceIDs.contains(ServiceEntry.ai(preset).id)) } }
-            Menu("本地与兼容服务") { ForEach(localProviders) { preset in Button(preset.rawValue) { state.addWritingService(preset); selectedWritingID = ServiceEntry.ai(preset).id }.disabled(state.addedWritingServiceIDs.contains(ServiceEntry.ai(preset).id)) } }
-        } label: { Image(systemName: "plus") }.menuStyle(.borderlessButton)
+        Button { showsWritingEngines.toggle() } label: { Image(systemName: "plus") }
+            .buttonStyle(.plain)
+            .popover(isPresented: $showsWritingEngines) {
+                AddEngineGrid(entries: AIProviderPreset.allCases.map(ServiceEntry.ai), existingIDs: Set(state.addedWritingServiceIDs)) { entry in
+                    guard let preset = entry.aiPreset else { return }
+                    state.addWritingService(preset); selectedWritingID = entry.id; showsWritingEngines = false
+                }
+            }
     }
 
     private var chineseProviders: [AIProviderPreset] { [.deepSeek, .qwen, .kimi, .doubao, .zhipu, .ernie, .hunyuan, .minimax, .siliconFlow] }
-    private var internationalProviders: [AIProviderPreset] { [.openAI, .anthropic, .gemini, .xAI, .groq, .openRouter] }
+    private var internationalProviders: [AIProviderPreset] { [.openAI, .anthropic, .gemini, .xAI, .perplexity, .groq, .openRouter, .mistral, .cohere] }
     private var localProviders: [AIProviderPreset] { [.ollama, .custom] }
+    private var allTranslationEntries: [ServiceEntry] { [.system, .deepl] + (chineseProviders + internationalProviders + localProviders).map(ServiceEntry.ai) }
 
     private var systemTranslationDetail: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -254,7 +306,12 @@ struct SettingsView: View {
             } } }
             Divider()
             HStack(spacing: 0) {
-                Menu { ForEach(AIProviderPreset.allCases) { preset in Button(preset.rawValue) { let entry = ServiceEntry.ai(preset); state.addDocumentService(entry); selectedDocumentID = entry.id }.disabled(state.addedDocumentServiceIDs.contains(ServiceEntry.ai(preset).id)) }; Divider(); Button("DeepL 翻译") { state.addDocumentService(.deepl); selectedDocumentID = ServiceEntry.deepl.id }.disabled(state.addedDocumentServiceIDs.contains(ServiceEntry.deepl.id)) } label: { Image(systemName: "plus") }.menuStyle(.borderlessButton).frame(width: 42)
+                Button { showsDocumentEngines.toggle() } label: { Image(systemName: "plus") }.buttonStyle(.plain).frame(width: 42)
+                    .popover(isPresented: $showsDocumentEngines) {
+                        AddEngineGrid(entries: [.deepl] + AIProviderPreset.allCases.map(ServiceEntry.ai), existingIDs: Set(state.addedDocumentServiceIDs)) { entry in
+                            state.addDocumentService(entry); selectedDocumentID = entry.id; showsDocumentEngines = false
+                        }
+                    }
                 Divider().frame(height: 18)
                 Button { guard let entry = ServiceEntry.from(id: selectedDocumentID) else { return }; let next = state.addedDocumentServices.first(where: { $0.id != entry.id })?.id ?? ""; state.removeDocumentService(entry); selectedDocumentID = next } label: { Image(systemName: "minus") }.buttonStyle(.plain).frame(width: 42).disabled(selectedDocumentID.isEmpty)
                 Spacer()
@@ -280,10 +337,13 @@ struct SettingsView: View {
                 settingRow("正文字号", "调整原文和结果区域的字体大小") { slider(Binding(get: { state.editorFontSize }, set: { state.editorFontSize = $0 }), 14...22) }
                 settingRow("正文行距", "调整长段落的阅读间距") { slider(Binding(get: { state.editorLineSpacing }, set: { state.editorLineSpacing = $0 }), 2...10) }
                 settingRow("朗读语音", "来自 macOS 系统语音；自动模式会按文本语言选择") {
-                    Picker("", selection: Binding(get: { state.selectedVoiceIdentifier }, set: { value in state.setSpeechVoice(value) })) {
-                        Text("自动选择").tag("")
-                        ForEach(state.availableVoices, id: \.identifier) { voice in Text("\(voice.name) · \(voice.language)").tag(voice.identifier) }
-                    }.labelsHidden().frame(width: 260)
+                    HStack {
+                        Picker("", selection: Binding(get: { state.selectedVoiceIdentifier }, set: { value in state.setSpeechVoice(value) })) {
+                            Text("自动选择").tag("")
+                            ForEach(state.availableVoices, id: \.identifier) { voice in Text("\(voice.name) · \(voice.language)").tag(voice.identifier) }
+                        }.labelsHidden().frame(width: 260)
+                        Button(state.isSpeaking ? "停止试听" : "试听") { state.toggleSpeechPreview() }
+                    }
                 }
                 settingRow("联系我们", "问题反馈与建议") {
                     Link("pallasowl2026@gmail.com", destination: URL(string: "mailto:pallasowl2026@gmail.com")!)
@@ -326,6 +386,8 @@ private struct AIProfileEditor: View {
     @State private var model = ""
     @State private var message = ""
     @State private var validating = false
+    @State private var models: [String] = []
+    @State private var loadingModels = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -333,7 +395,12 @@ private struct AIProfileEditor: View {
             Divider()
             profileField("API 地址", "填写完整的 Chat Completions 地址") { TextField("https://…/chat/completions", text: $endpoint) }
             profileField("API Key", preset == .ollama ? "本地 Ollama 通常不需要 API Key" : "密钥仅保存在本机 macOS 钥匙串") { SecureField("sk-…", text: $apiKey) }
-            profileField("模型", "填写服务支持的模型名称") { TextField(preset.suggestedModel, text: $model) }
+            profileField("模型", "从官方接口刷新当前账户可用模型，也可直接输入") {
+                HStack {
+                    ModelComboBox(text: $model, items: models).frame(height: 24)
+                    Button(loadingModels ? "读取中…" : "刷新模型") { refreshModels() }.disabled(loadingModels)
+                }
+            }
             Spacer()
             HStack {
                 Text(message).font(.caption).foregroundStyle(.secondary); Spacer()
@@ -341,9 +408,10 @@ private struct AIProfileEditor: View {
                 Button("验证") { save(); validating = true; Task { message = await state.validateAIProfile(preset, endpoint: endpoint, apiKey: apiKey, model: model); validating = false } }.buttonStyle(.borderedProminent).disabled(validating)
             }.padding(.top, 12)
         }.padding(12)
-        .task(id: preset.id) { let p = state.loadAIProfile(preset, writing: writing); endpoint = p.endpoint; apiKey = p.apiKey; model = p.model; message = "" }
+        .task(id: preset.id) { let p = state.loadAIProfile(preset, writing: writing); endpoint = p.endpoint; apiKey = p.apiKey; model = p.model; models = state.cachedModels(preset); message = "" }
     }
     private func save() { do { try state.saveAIProfile(preset, writing: writing, endpoint: endpoint, apiKey: apiKey, model: model); message = "已保存" } catch { message = "保存失败：\(error.localizedDescription)" } }
+    private func refreshModels() { loadingModels = true; Task { do { models = try await state.fetchOfficialModels(preset, endpoint: endpoint, apiKey: apiKey); if model.isEmpty { model = models.first ?? "" }; message = "已读取 \(models.count) 个模型" } catch { message = "读取失败：\(error.localizedDescription)" }; loadingModels = false } }
     private func profileField<C: View>(_ title: String, _ help: String, @ViewBuilder content: () -> C) -> some View { VStack(alignment: .leading, spacing: 7) { Text(title).fontWeight(.medium); content(); Text(help).font(.caption).foregroundStyle(.secondary) }.padding(.vertical, 12).overlay(alignment: .bottom) { Divider() } }
 }
 
@@ -355,6 +423,8 @@ private struct DocumentAIProfileEditor: View {
     @State private var model = ""
     @State private var message = ""
     @State private var validating = false
+    @State private var models: [String] = []
+    @State private var loadingModels = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -362,11 +432,12 @@ private struct DocumentAIProfileEditor: View {
             Divider()
             profileField("API 地址", "填写完整的 Chat Completions 地址") { TextField("https://…/chat/completions", text: $endpoint) }
             profileField("API Key", preset == .ollama ? "本地 Ollama 通常不需要 API Key" : "密钥仅保存在本机 macOS 钥匙串") { SecureField("sk-…", text: $apiKey) }
-            profileField("模型", "填写服务支持的模型名称") { TextField(preset.suggestedModel, text: $model) }
+            profileField("模型", "从官方接口刷新当前账户可用模型，也可直接输入") { HStack { ModelComboBox(text: $model, items: models).frame(height: 24); Button(loadingModels ? "读取中…" : "刷新模型") { refreshModels() }.disabled(loadingModels) } }
             Spacer()
             HStack { Text(message).font(.caption).foregroundStyle(.secondary); Spacer(); Button("保存", action: save); Button("验证") { save(); validating = true; Task { message = await state.validateAIProfile(preset, endpoint: endpoint, apiKey: apiKey, model: model); validating = false } }.buttonStyle(.borderedProminent).disabled(validating) }.padding(.top, 12)
-        }.padding(12).task(id: preset.id) { let profile = state.loadDocumentAIProfile(preset); endpoint = profile.endpoint; apiKey = profile.apiKey; model = profile.model; message = "" }
+        }.padding(12).task(id: preset.id) { let profile = state.loadDocumentAIProfile(preset); endpoint = profile.endpoint; apiKey = profile.apiKey; model = profile.model; models = state.cachedModels(preset); message = "" }
     }
     private func save() { do { try state.saveDocumentAIProfile(preset, endpoint: endpoint, apiKey: apiKey, model: model); message = "已保存" } catch { message = "保存失败：\(error.localizedDescription)" } }
+    private func refreshModels() { loadingModels = true; Task { do { models = try await state.fetchOfficialModels(preset, endpoint: endpoint, apiKey: apiKey); if model.isEmpty { model = models.first ?? "" }; message = "已读取 \(models.count) 个模型" } catch { message = "读取失败：\(error.localizedDescription)" }; loadingModels = false } }
     private func profileField<C: View>(_ title: String, _ help: String, @ViewBuilder content: () -> C) -> some View { VStack(alignment: .leading, spacing: 7) { Text(title).fontWeight(.medium); content(); Text(help).font(.caption).foregroundStyle(.secondary) }.padding(.vertical, 12).overlay(alignment: .bottom) { Divider() } }
 }

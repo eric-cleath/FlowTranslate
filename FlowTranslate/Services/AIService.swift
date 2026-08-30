@@ -7,6 +7,46 @@ struct AIConfiguration {
 }
 
 actor AIService {
+    func listModels(preset: AIProviderPreset, endpoint: String, apiKey: String) async throws -> [String] {
+        let url: URL
+        if preset == .gemini {
+            guard var components = URLComponents(string: "https://generativelanguage.googleapis.com/v1beta/models") else { throw ServiceError.invalidConfiguration }
+            components.queryItems = [.init(name: "key", value: apiKey)]
+            guard let value = components.url else { throw ServiceError.invalidConfiguration }
+            url = value
+        } else {
+            var base = endpoint
+            if base.hasSuffix("/chat/completions") { base.removeLast("/chat/completions".count) }
+            guard let value = URL(string: base + "/models") else { throw ServiceError.invalidConfiguration }
+            url = value
+        }
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 30
+        if preset == .anthropic {
+            request.setValue(apiKey, forHTTPHeaderField: "x-api-key")
+            request.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
+        } else if preset != .gemini {
+            request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        }
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            let message = (try? JSONDecoder().decode(APIErrorEnvelope.self, from: data).error.message)
+            throw ServiceError.requestFailed(message ?? "无法读取官方模型列表")
+        }
+        let object = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        let rows = (object?["data"] as? [[String: Any]]) ?? (object?["models"] as? [[String: Any]]) ?? []
+        let blocked = ["embed", "whisper", "tts", "audio", "image", "moderation", "realtime", "transcri"]
+        return Array(Set(rows.compactMap { row -> String? in
+            let raw = (row["id"] as? String) ?? (row["name"] as? String) ?? (row["baseModelId"] as? String)
+            guard var id = raw else { return nil }
+            if id.hasPrefix("models/") { id.removeFirst("models/".count) }
+            let lower = id.lowercased()
+            guard !blocked.contains(where: lower.contains) else { return nil }
+            if let actions = row["supportedGenerationMethods"] as? [String], !actions.contains("generateContent") { return nil }
+            return id
+        })).sorted { $0.localizedStandardCompare($1) == .orderedAscending }
+    }
+
     func validate(configuration: AIConfiguration) async throws -> String {
         guard !configuration.apiKey.isEmpty else { throw ServiceError.invalidConfiguration }
         var text = configuration.endpoint.absoluteString

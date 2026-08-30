@@ -244,6 +244,24 @@ final class AppState {
         stopSpeaking()
     }
 
+    func toggleSpeechPreview() {
+        if isSpeaking { stopSpeaking(); return }
+        let voice = selectedVoiceIdentifier.isEmpty ? nil : AVSpeechSynthesisVoice(identifier: selectedVoiceIdentifier)
+        let language = voice?.language.lowercased() ?? Locale.current.language.languageCode?.identifier.lowercased() ?? "en"
+        let sample: String
+        if language.hasPrefix("zh") { sample = "你好，这是 PallasOwl 的语音试听。" }
+        else if language.hasPrefix("ja") { sample = "こんにちは、PallasOwl の音声サンプルです。" }
+        else if language.hasPrefix("ko") { sample = "안녕하세요. PallasOwl 음성 미리 듣기입니다." }
+        else if language.hasPrefix("fr") { sample = "Bonjour, voici un aperçu de la voix PallasOwl." }
+        else { sample = "Hello, this is a preview of the PallasOwl voice." }
+        speechSynthesizer.stopSpeaking(at: .immediate)
+        let utterance = AVSpeechUtterance(string: sample)
+        utterance.voice = voice ?? AVSpeechSynthesisVoice(language: language)
+        utterance.rate = AVSpeechUtteranceDefaultSpeechRate
+        isSpeaking = true
+        speechSynthesizer.speak(utterance)
+    }
+
     func saveSettings() throws {
         UserDefaults.standard.set(translationEndpoint, forKey: "translationEndpoint")
         UserDefaults.standard.set(translationModel, forKey: "translationModel")
@@ -457,6 +475,19 @@ final class AppState {
             guard let url = URL(string: endpoint), !model.isEmpty else { throw ServiceError.invalidConfiguration }
             return try await service.validate(configuration: .init(endpoint: url, apiKey: effectiveKey, model: model))
         } catch { return "验证失败：\(error.localizedDescription)" }
+    }
+
+    func fetchOfficialModels(_ preset: AIProviderPreset, endpoint: String, apiKey: String) async throws -> [String] {
+        let effectiveKey = apiKey.isEmpty && preset == .ollama ? "ollama" : apiKey
+        guard !endpoint.isEmpty, !effectiveKey.isEmpty else { throw ServiceError.invalidConfiguration }
+        let models = try await service.listModels(preset: preset, endpoint: endpoint, apiKey: effectiveKey)
+        guard !models.isEmpty else { throw ServiceError.requestFailed("官方接口没有返回可用的文本模型") }
+        UserDefaults.standard.set(models, forKey: "availableModels.\(profileSuffix(preset))")
+        return models
+    }
+
+    func cachedModels(_ preset: AIProviderPreset) -> [String] {
+        UserDefaults.standard.stringArray(forKey: "availableModels.\(profileSuffix(preset))") ?? []
     }
 
     func selectTranslationAI(_ preset: AIProviderPreset, activate: Bool = true) {
@@ -819,6 +850,9 @@ final class AppState {
         case .xAI: "xai"
         case .groq: "groq"
         case .openRouter: "openrouter"
+        case .perplexity: "perplexity"
+        case .mistral: "mistral"
+        case .cohere: "cohere"
         case .ollama: "ollama"
         case .custom: "custom"
         }

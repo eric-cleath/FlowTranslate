@@ -11,6 +11,7 @@ final class DocumentTranslationModel {
     var sourceLanguage = Language.supported[0]
     var targetLanguage = Language.supported[1]
     var outputStyle: DocumentOutputStyle = .translated
+    var exportFormat: DocumentExportFormat = .markdown
     var sourceText = ""
     var sections: [DocumentTranslationSection] = []
     var progress = 0.0
@@ -111,9 +112,44 @@ final class DocumentTranslationModel {
     func export() {
         guard !resultText.isEmpty else { return }
         let panel = NSSavePanel()
-        panel.allowedContentTypes = [.plainText, .init(filenameExtension: "md")!]
-        panel.nameFieldStringValue = "\(fileURL?.deletingPathExtension().lastPathComponent ?? pastedImageName)-译文.md"
-        if panel.runModal() == .OK, let url = panel.url { try? resultText.write(to: url, atomically: true, encoding: .utf8) }
+        panel.allowedContentTypes = [exportFormat == .markdown ? .init(filenameExtension: "md")! : .plainText]
+        let base = fileURL?.deletingPathExtension().lastPathComponent ?? (pastedImageName.isEmpty ? "PallasOwl-文档" : pastedImageName)
+        panel.nameFieldStringValue = "\(base)-译文.\(exportFormat.fileExtension)"
+        if panel.runModal() == .OK, let url = panel.url { try? exportText(title: base).write(to: url, atomically: true, encoding: .utf8) }
+    }
+
+    private func exportText(title: String) -> String {
+        guard exportFormat == .markdown else { return resultText }
+        let safeTitle = title.replacingOccurrences(of: "\"", with: "\\\"")
+        let date = ISO8601DateFormatter().string(from: Date())
+        let frontmatter = """
+        ---
+        title: "\(safeTitle) 译文"
+        source: "\(safeTitle)"
+        translated_at: "\(date)"
+        source_language: "\(sourceLanguage.name)"
+        target_language: "\(targetLanguage.name)"
+        output_style: "\(outputStyle.rawValue)"
+        tags:
+          - PallasOwl
+          - 翻译
+        ---
+
+        # \(title) 译文
+
+        """
+        if outputStyle == .translated {
+            return frontmatter + sections.map(\.translation).joined(separator: "\n\n") + "\n"
+        }
+        let rows = sections.map { "| \(tableCell($0.source)) | \(tableCell($0.translation)) |" }.joined(separator: "\n")
+        return frontmatter + "| 原文 | 译文 |\n|---|---|\n" + rows + "\n"
+    }
+
+    private func tableCell(_ text: String) -> String {
+        text.trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "|", with: "\\|")
+            .replacingOccurrences(of: "\r\n", with: "<br>")
+            .replacingOccurrences(of: "\n", with: "<br>")
     }
 }
 
@@ -160,6 +196,7 @@ struct DocumentTranslationView: View {
                     .buttonStyle(.plain).help("打开文档翻译设置")
                 if model.isWorking { Button("暂停", action: model.cancel) }
                 Spacer()
+                Picker("导出格式", selection: $model.exportFormat) { ForEach(DocumentExportFormat.allCases) { Text($0.rawValue).tag($0) } }.labelsHidden().frame(width: 160)
                 Button("导出结果", action: model.export).disabled(model.resultText.isEmpty || model.isWorking)
                 Button("开始翻译") { model.translate(using: state) }.buttonStyle(.borderedProminent).disabled(model.sourceText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || model.isWorking)
             }
@@ -191,9 +228,10 @@ struct DocumentTranslationView: View {
             }
             HStack {
                 if !model.sourceText.isEmpty { Text("已提取 \(model.sourceText.count) 个字符").font(.caption).foregroundStyle(.secondary) }
+                else { Text(model.displayName.isEmpty ? "可直接输入文字" : "文件已就绪").font(.caption).foregroundStyle(.secondary) }
                 Spacer()
                 Button("提取文字") { model.extractText() }.disabled((model.fileURL == nil && model.pastedImage == nil) || model.isWorking)
-            }
+            }.padding(.horizontal, 10).padding(.vertical, 7).background(.background.secondary.opacity(0.65), in: RoundedRectangle(cornerRadius: 8))
         }.frame(minWidth: 350)
     }
 

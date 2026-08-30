@@ -70,7 +70,7 @@ struct TranslatorView: View {
             HStack {
                 Button { openSettings() } label: { Image(systemName: "gearshape") }
                     .buttonStyle(.plain).help("打开设置")
-                Text("⌘↩︎ 开始")
+                Text("↩︎ 翻译")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 if state.mode == .translate {
@@ -79,25 +79,17 @@ struct TranslatorView: View {
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
-                Button("清空") {
-                    state.clearWorkspace()
-                }
-                Button("复制结果", action: state.copyOutput)
-                    .disabled(state.output.isEmpty)
-                Button {
-                    Task { await state.run() }
-                } label: {
-                    if state.isWorking { ProgressView().controlSize(.small) } else { Text(LocalizedStringKey(state.mode.rawValue)) }
-                }
-                .keyboardShortcut(.return, modifiers: .command)
-                .buttonStyle(.borderedProminent)
-                .disabled(state.input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || state.isWorking)
             }
             .padding()
             }
         }
         .frame(minWidth: 760, minHeight: 520)
         .onAppear { bindGlobalShortcuts() }
+        .onChange(of: state.input) { _, value in
+            if value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                state.output = ""; state.translationSummary = ""; state.errorMessage = nil; state.summaryError = nil
+            }
+        }
         .onReceive(NSWorkspace.shared.notificationCenter.publisher(for: NSWorkspace.didWakeNotification)) { _ in
             state.reloadSecretsAfterUnlock()
         }

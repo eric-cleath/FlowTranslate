@@ -58,6 +58,9 @@ enum AIProviderPreset: String, CaseIterable, Identifiable {
     case xAI = "xAI Grok"
     case groq = "Groq"
     case openRouter = "OpenRouter"
+    case perplexity = "Perplexity"
+    case mistral = "Mistral AI"
+    case cohere = "Cohere"
     case ollama = "Ollama（本地）"
     case custom = "自定义"
     var id: Self { self }
@@ -78,6 +81,9 @@ enum AIProviderPreset: String, CaseIterable, Identifiable {
         case .xAI: "https://api.x.ai/v1/chat/completions"
         case .groq: "https://api.groq.com/openai/v1/chat/completions"
         case .openRouter: "https://openrouter.ai/api/v1/chat/completions"
+        case .perplexity: "https://api.perplexity.ai/chat/completions"
+        case .mistral: "https://api.mistral.ai/v1/chat/completions"
+        case .cohere: "https://api.cohere.com/compatibility/v1/chat/completions"
         case .ollama: "http://localhost:11434/v1/chat/completions"
         case .custom: ""
         }
@@ -99,6 +105,9 @@ enum AIProviderPreset: String, CaseIterable, Identifiable {
         case .xAI: "grok-4-fast"
         case .groq: "llama-3.3-70b-versatile"
         case .openRouter: "openai/gpt-4.1-mini"
+        case .perplexity: "sonar"
+        case .mistral: "mistral-small-latest"
+        case .cohere: "command-r-plus"
         case .ollama: "qwen3:8b"
         case .custom: ""
         }
@@ -119,7 +128,14 @@ struct Language: Identifiable, Hashable, Codable {
         .init(code: "ko", name: "韩语"),
         .init(code: "fr", name: "法语"),
         .init(code: "de", name: "德语"),
-        .init(code: "es", name: "西班牙语")
+        .init(code: "es", name: "西班牙语"),
+        .init(code: "pt", name: "葡萄牙语"),
+        .init(code: "it", name: "意大利语"),
+        .init(code: "ar", name: "阿拉伯语"),
+        .init(code: "ru", name: "俄语"),
+        .init(code: "vi", name: "越南语"),
+        .init(code: "id", name: "印尼语"),
+        .init(code: "th", name: "泰语")
     ]
 }
 
@@ -232,6 +248,13 @@ enum DocumentOutputStyle: String, CaseIterable, Identifiable {
     case translated = "仅译文"
     case bilingual = "原文与译文"
     var id: Self { self }
+}
+
+enum DocumentExportFormat: String, CaseIterable, Identifiable {
+    case markdown = "Obsidian Markdown"
+    case plainText = "纯文本"
+    var id: Self { self }
+    var fileExtension: String { self == .markdown ? "md" : "txt" }
 }
 
 struct DocumentTranslationSection: Identifiable, Sendable {

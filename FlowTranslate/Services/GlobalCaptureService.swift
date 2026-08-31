@@ -12,11 +12,20 @@ final class GlobalCaptureService {
     var onCrossLanguageWriting: ((String) -> Void)?
     var onOpenLiveCaption: (() -> Void)?
     var onToggleLiveCaption: (() -> Void)?
+    var onInstantSelection: ((String, @escaping (Result<String, Error>) -> Void) -> Void)?
     var onError: ((String) -> Void)?
     private var refs: [EventHotKeyRef?] = []
     private var progressPanel: NSPanel?
     private var progressSessionID: UUID?
     private var progressStartedAt: Date?
+    private var selectionMonitor: Any?
+    private var instantSelectionText = ""
+    private var lastInstantSelectionDate = Date.distantPast
+    private var instantSelectionPoint = CGPoint.zero
+    private var instantIconPanel: NSPanel?
+    private var instantResultPanel: NSPanel?
+    private var instantResultLabel: NSTextField?
+    private var instantActionTarget: InstantSelectionActionTarget?
     private init() {}
 
     func start() {
@@ -29,6 +38,16 @@ final class GlobalCaptureService {
             return noErr
         }, 1, &eventType, nil, nil)
         reloadShortcuts(loadSavedShortcuts())
+        configureInstantSelection(enabled: UserDefaults.standard.bool(forKey: "instantSelectionEnabled"))
+    }
+
+    func configureInstantSelection(enabled: Bool) {
+        if let selectionMonitor { NSEvent.removeMonitor(selectionMonitor); self.selectionMonitor = nil }
+        hideInstantSelectionPanels()
+        guard enabled else { return }
+        selectionMonitor = NSEvent.addGlobalMonitorForEvents(matching: .leftMouseUp) { [weak self] event in
+            Task { @MainActor in self?.handlePossibleInstantSelection(at: NSEvent.mouseLocation) }
+        }
     }
 
     func reloadShortcuts(_ shortcuts: [ShortcutAction: ShortcutConfig]) {
@@ -76,7 +95,7 @@ final class GlobalCaptureService {
         indicator.style = .bar
         indicator.isIndeterminate = true
         indicator.startAnimation(nil)
-        let label = NSTextField(labelWithString: "PallasOwl 正在处理…")
+        let label = NSTextField(labelWithString: "PallasOwl Translator 正在处理…")
         label.frame = NSRect(x: 14, y: 29, width: 242, height: 20)
         let mouse = NSEvent.mouseLocation
         let screen = NSScreen.screens.first { $0.frame.contains(mouse) } ?? NSScreen.main
@@ -118,7 +137,7 @@ final class GlobalCaptureService {
         postCommandC()
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
             guard pasteboard.changeCount != oldChange, let text = pasteboard.string(forType: .string), !text.isEmpty else {
-                self.onError?("没有读取到选中文字。请确认已选中文字；如仍失败，请在“隐私与安全性 → 辅助功能”中重新添加 PallasOwl。")
+                self.onError?("没有读取到选中文字。请确认已选中文字；如仍失败，请在“隐私与安全性 → 辅助功能”中重新添加 PallasOwl Translator。")
                 return
             }
             completion(text)
@@ -126,10 +145,89 @@ final class GlobalCaptureService {
         }
     }
 
+    private func handlePossibleInstantSelection(at point: CGPoint) {
+        guard NSWorkspace.shared.frontmostApplication?.bundleIdentifier != Bundle.main.bundleIdentifier else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) { [weak self] in
+            guard let self, let text = self.accessibilitySelectedText(), text.count <= 5_000 else { return }
+            let cleaned = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard cleaned.count >= 2 else { return }
+            if cleaned == self.instantSelectionText, Date().timeIntervalSince(self.lastInstantSelectionDate) < 1 { return }
+            self.instantSelectionText = cleaned
+            self.lastInstantSelectionDate = Date()
+            self.instantSelectionPoint = point
+            if UserDefaults.standard.bool(forKey: "instantSelectionAutomatic") { self.beginInstantTranslation() }
+            else { self.showInstantTranslateIcon(at: point) }
+        }
+    }
+
+    private func accessibilitySelectedText() -> String? {
+        let system = AXUIElementCreateSystemWide()
+        var focused: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(system, kAXFocusedUIElementAttribute as CFString, &focused) == .success,
+              let focused else { return nil }
+        var selected: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(focused as! AXUIElement, kAXSelectedTextAttribute as CFString, &selected) == .success else { return nil }
+        return selected as? String
+    }
+
+    private func showInstantTranslateIcon(at point: CGPoint) {
+        hideInstantSelectionPanels()
+        let target = InstantSelectionActionTarget { [weak self] in self?.beginInstantTranslation() }
+        let button = NSButton(title: "T", target: target, action: #selector(InstantSelectionActionTarget.trigger))
+        button.bezelStyle = NSButton.BezelStyle.texturedRounded
+        button.font = NSFont.boldSystemFont(ofSize: 15)
+        let panel = makeInstantPanel(frame: NSRect(origin: panelOrigin(near: point, size: NSSize(width: 38, height: 38)), size: NSSize(width: 38, height: 38)))
+        panel.contentView = button
+        panel.orderFrontRegardless()
+        instantActionTarget = target
+        instantIconPanel = panel
+    }
+
+    private func beginInstantTranslation() {
+        instantIconPanel?.orderOut(nil); instantIconPanel = nil
+        instantResultPanel?.orderOut(nil); instantResultPanel = nil; instantResultLabel = nil
+        let size = NSSize(width: 440, height: 170)
+        let panel = makeInstantPanel(frame: NSRect(origin: panelOrigin(near: instantSelectionPoint, size: size), size: size))
+        let label = NSTextField(wrappingLabelWithString: "正在翻译…")
+        label.font = .systemFont(ofSize: 15)
+        label.frame = NSRect(x: 18, y: 18, width: 404, height: 134)
+        label.maximumNumberOfLines = 7
+        panel.contentView?.addSubview(label)
+        panel.orderFrontRegardless()
+        instantResultPanel = panel
+        instantResultLabel = label
+        guard let onInstantSelection else { label.stringValue = "选中即译尚未就绪。"; return }
+        onInstantSelection(instantSelectionText) { [weak self] result in
+            Task { @MainActor in
+                self?.instantResultLabel?.stringValue = (try? result.get()) ?? "翻译失败，请检查当前翻译引擎。"
+            }
+        }
+    }
+
+    private func makeInstantPanel(frame: NSRect) -> NSPanel {
+        let panel = NSPanel(contentRect: frame, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+        panel.level = .statusBar; panel.isOpaque = false
+        panel.backgroundColor = NSColor.windowBackgroundColor.withAlphaComponent(0.97)
+        panel.hasShadow = true; panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        return panel
+    }
+
+    private func panelOrigin(near point: CGPoint, size: NSSize) -> NSPoint {
+        let screen = NSScreen.screens.first { $0.frame.contains(point) } ?? NSScreen.main
+        let visible = screen?.visibleFrame ?? .zero
+        return NSPoint(x: min(max(point.x + 10, visible.minX + 8), visible.maxX - size.width - 8),
+                       y: min(max(point.y - size.height - 10, visible.minY + 8), visible.maxY - size.height - 8))
+    }
+
+    private func hideInstantSelectionPanels() {
+        instantIconPanel?.orderOut(nil); instantResultPanel?.orderOut(nil)
+        instantIconPanel = nil; instantResultPanel = nil; instantResultLabel = nil; instantActionTarget = nil
+    }
+
     func captureScreenshot() {
         guard CGPreflightScreenCaptureAccess() else {
             CGRequestScreenCaptureAccess()
-            onError?("需要屏幕录制权限。授权后请重启 PallasOwl，再按截图翻译快捷键。")
+            onError?("需要屏幕录制权限。授权后请重启 PallasOwl Translator，再按截图翻译快捷键。")
             return
         }
         let fileURL = FileManager.default.temporaryDirectory.appending(path: "PallasOwl-\(UUID().uuidString).png")
@@ -250,4 +348,10 @@ final class GlobalCaptureService {
         down?.flags = flags; up?.flags = flags
         down?.post(tap: .cghidEventTap); up?.post(tap: .cghidEventTap)
     }
+}
+
+private final class InstantSelectionActionTarget: NSObject {
+    let action: () -> Void
+    init(action: @escaping () -> Void) { self.action = action }
+    @objc func trigger() { action() }
 }

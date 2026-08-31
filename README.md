@@ -62,7 +62,7 @@ xcodebuild \
 
 ## 开发记录
 
-详见 [FlowTranslate开发记录.md](./FlowTranslate开发记录.md)。该文件保留原名，以便 Obsidian 链接和既有记录继续有效。
+详见 [PallasOwlTranslator开发记录.md](./PallasOwlTranslator开发记录.md)。文件名包含完整项目名，便于在 Obsidian 中与其他开发项目区分。
 
 ## 发布文件
 

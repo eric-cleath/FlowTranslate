@@ -1,8 +1,8 @@
 ---
-title: PallasOwl（原 FlowTranslate）开发记录与下一版本计划
+title: PallasOwl Translator（原 FlowTranslate）开发记录与下一版本计划
 aliases:
-  - FlowTranslate 路线图
-  - FlowTranslate 版本记录
+  - PallasOwl Translator 路线图
+  - PallasOwl Translator 版本记录
 tags:
   - FlowTranslate
   - macOS
@@ -10,11 +10,29 @@ tags:
   - AI写作
   - 开发记录
 status: active
-current_version: 0.9.3
+current_version: 0.10.0
 updated: 2026-08-31
 ---
 
-# PallasOwl（原 FlowTranslate）开发记录与下一版本计划
+# PallasOwl Translator（原 FlowTranslate）开发记录与下一版本计划
+
+## 0.10.0（2026-08-31）— 品牌更名、选中即译与系统体验优化
+
+- App 显示名称改为 **PallasOwl Translator**，同步更新 Finder、窗口、菜单、DMG 和权限说明；Bundle ID 与签名证书保持不变。
+- 钥匙串改为按当前功能和引擎需要读取，不再启动时读取全部 API Key；本次运行内缓存已读取密钥。
+- API Key 保存改用 `SecItemUpdate` 原位更新，保留钥匙串项目的“始终允许”访问控制。
+- 实时字幕开启 Apple Speech 自动标点；译文未返回时不再重复显示原文。
+- PallasOwl Translator 主界面可见时隐藏黑色字幕悬浮窗，主界面关闭后再自动显示。
+- 设置增加“关于”页，显示图标、版本、简介、联系邮箱、GitHub、更新入口和 MIT License。
+- 新增独立的 **选中即译**：鼠标选中其他 App 中的文字后，可显示 T 图标再翻译，或配置为自动显示结果；默认关闭。
+- 原有“划词翻译”的快捷键与处理逻辑保持不变。
+
+### 0.10.0 测试重点
+
+- 覆盖安装后检查辅助功能、屏幕与系统音频、麦克风和语音识别权限是否保留。
+- 测试启动、文本翻译、AI 文本处理和设置切换时的钥匙串弹窗次数。
+- 测试实时原文标点、主窗口与悬浮字幕的自动切换。
+- 在 Safari、Chrome、PDF、Word 和文本编辑器中测试“选中即译”两种显示方式。
 
 ## 0.9.3（2026-08-31）— 实时字幕授权回调崩溃修复
 

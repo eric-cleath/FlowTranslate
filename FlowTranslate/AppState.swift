@@ -30,10 +30,10 @@ final class AppState {
 
     var translationEndpoint = UserDefaults.standard.string(forKey: "translationEndpoint") ?? "https://api.openai.com/v1/chat/completions"
     var translationModel = UserDefaults.standard.string(forKey: "translationModel") ?? "gpt-4.1-mini"
-    var translationAPIKey = KeychainStore.read(account: "translationAPIKey")
+    var translationAPIKey = ""
     var writingEndpoint = UserDefaults.standard.string(forKey: "writingEndpoint") ?? "https://api.openai.com/v1/chat/completions"
     var writingModel = UserDefaults.standard.string(forKey: "writingModel") ?? "gpt-4.1-mini"
-    var writingAPIKey = KeychainStore.read(account: "writingAPIKey")
+    var writingAPIKey = ""
     var translationAIPreset = AIProviderPreset(rawValue: UserDefaults.standard.string(forKey: "translationAIPreset") ?? "") ?? .openAI
     var writingAIPreset = AIProviderPreset(rawValue: UserDefaults.standard.string(forKey: "writingAIPreset") ?? "") ?? .openAI
     var translationProvider = TranslationProvider(rawValue: UserDefaults.standard.string(forKey: "translationProvider") ?? "") ?? .ai
@@ -49,7 +49,7 @@ final class AppState {
     var documentAIPreset = AIProviderPreset(rawValue: UserDefaults.standard.string(forKey: "documentAIPreset") ?? "") ?? .openAI
     var documentEndpoint = UserDefaults.standard.string(forKey: "documentEndpoint") ?? "https://api.openai.com/v1/chat/completions"
     var documentModel = UserDefaults.standard.string(forKey: "documentModel") ?? "gpt-4.1-mini"
-    var documentAPIKey = KeychainStore.read(account: "documentAPIKey")
+    var documentAPIKey = ""
     var addedDocumentServiceIDs = UserDefaults.standard.stringArray(forKey: "addedDocumentServiceIDs") ?? []
     var enabledDocumentAIs: Set<String> = Set(UserDefaults.standard.stringArray(forKey: "enabledDocumentAIs") ?? [])
     var documentDeepLEnabled = UserDefaults.standard.object(forKey: "documentDeepLEnabled") as? Bool ?? false
@@ -57,13 +57,13 @@ final class AppState {
     var liveCaptionAIPreset = AIProviderPreset(rawValue: UserDefaults.standard.string(forKey: "liveCaptionAIPreset") ?? "") ?? .openAI
     var liveCaptionEndpoint = UserDefaults.standard.string(forKey: "liveCaptionEndpoint") ?? AIProviderPreset.openAI.endpoint
     var liveCaptionModel = UserDefaults.standard.string(forKey: "liveCaptionModel") ?? AIProviderPreset.openAI.suggestedModel
-    var liveCaptionAPIKey = KeychainStore.read(account: "liveCaptionAPIKey")
-    var liveCaptionDeepLKey = KeychainStore.read(account: "liveCaptionDeepLKey")
+    var liveCaptionAPIKey = ""
+    var liveCaptionDeepLKey = ""
     var addedLiveCaptionServiceIDs = UserDefaults.standard.stringArray(forKey: "addedLiveCaptionServiceIDs") ?? [ServiceEntry.system.id]
     var enabledLiveCaptionAIs: Set<String> = Set(UserDefaults.standard.stringArray(forKey: "enabledLiveCaptionAIs") ?? [])
     var liveCaptionDeepLEnabled = UserDefaults.standard.object(forKey: "liveCaptionDeepLEnabled") as? Bool ?? false
     var appLanguage = AppLanguage(rawValue: UserDefaults.standard.string(forKey: "appLanguage") ?? "") ?? .system
-    var deepLAPIKey = KeychainStore.read(account: "deepLAPIKey")
+    var deepLAPIKey = ""
     var deepLAPIType = DeepLAPIType(rawValue: UserDefaults.standard.string(forKey: "deepLAPIType") ?? "") ?? .free
     var deepLFormality = DeepLFormality(rawValue: UserDefaults.standard.string(forKey: "deepLFormality") ?? "") ?? .default
     var validationMessage = ""
@@ -107,7 +107,7 @@ final class AppState {
         let isTranslation = mode == .translate
         let effectiveSource = mode == .crossLanguageWriting ? (Language.supported.first { $0.code == "zh-Hans" } ?? sourceLanguage) : sourceLanguage
         let effectiveTarget = mode == .crossLanguageWriting ? crossWritingTargetLanguage : targetLanguage
-        await reloadSecretsWithRetry()
+        await reloadSecretsWithRetry(scope: .currentWork)
         let activeProvider = resolvedTranslationProvider()
         if isTranslation && activeProvider == nil {
             errorMessage = "请先在设置中启用 AI 翻译或 DeepL 翻译服务。"
@@ -195,7 +195,7 @@ final class AppState {
     func summarizeTranslation() async {
         let text = output.trimmingCharacters(in: .whitespacesAndNewlines)
         guard mode == .translate, !text.isEmpty else { return }
-        await reloadSecretsWithRetry()
+        await reloadSecretsWithRetry(scope: writingUsesTranslationEngine ? .translation : .writing)
         let sharesTranslationAI = writingUsesTranslationEngine
         if sharesTranslationAI && resolvedTranslationProvider() != .ai {
             summaryError = "当前文本翻译引擎不支持总结，请在 AI 文本处理中选择 AI 引擎。"; return
@@ -322,7 +322,10 @@ final class AppState {
     func selectTranslationProvider(_ provider: TranslationProvider) {
         translationProvider = provider
         if provider == .ai { aiTranslationEnabled = true }
-        if provider == .deepl { deepLEnabled = true }
+        if provider == .deepl {
+            deepLEnabled = true
+            if deepLAPIKey.isEmpty { deepLAPIKey = readSecret("deepLAPIKey") }
+        }
         persistTranslationPreferences()
     }
 
@@ -330,7 +333,10 @@ final class AppState {
         if provider == .ai { aiTranslationEnabled = enabled }
         else if provider == .deepl {
             deepLEnabled = enabled
-            if enabled { enabledTranslationAIs.removeAll(); aiTranslationEnabled = false; translationProvider = .deepl }
+            if enabled {
+                enabledTranslationAIs.removeAll(); aiTranslationEnabled = false; translationProvider = .deepl
+                if deepLAPIKey.isEmpty { deepLAPIKey = readSecret("deepLAPIKey") }
+            }
         }
         normalizeTranslationProvider()
         persistTranslationPreferences()
@@ -338,7 +344,7 @@ final class AppState {
 
     func validateAI(writing: Bool) async {
         isValidating = true; validationMessage = "正在验证…"
-        await reloadSecretsWithRetry()
+        await reloadSecretsWithRetry(scope: writing && !writingUsesTranslationEngine ? .writing : .translation)
         let shared = writing && writingUsesTranslationEngine
         if shared && resolvedTranslationProvider() != .ai {
             validationMessage = "验证失败：当前文本翻译引擎不支持 AI 文本处理。"
@@ -583,11 +589,11 @@ final class AppState {
 
     func reloadSecretsAfterUnlock() {
         guard keychainIssue != nil || translationAPIKey.isEmpty || writingAPIKey.isEmpty || deepLAPIKey.isEmpty else { return }
-        Task { await reloadSecretsWithRetry() }
+        Task { await reloadSecretsWithRetry(scope: .currentWork) }
     }
 
     func translateDocumentChunk(_ text: String, source: Language, target: Language) async throws -> String {
-        await reloadSecretsWithRetry()
+        await reloadSecretsWithRetry(scope: .document)
         let provider: TranslationProvider
         switch documentEngineMode {
         case .shared:
@@ -627,6 +633,7 @@ final class AppState {
     }
 
     func translateLiveCaption(_ text: String, source: Language, target: Language) async throws -> String {
+        await reloadSecretsWithRetry(scope: .liveCaption)
         if liveCaptionEngineMode == .shared { return try await translateUsingCurrentTextEngine(text, source: source, target: target) }
         if liveCaptionEngineMode == .system { return try await systemTranslationService.translate(text: text, source: source, target: target) }
         if liveCaptionEngineMode == .deepl {
@@ -637,6 +644,12 @@ final class AppState {
         guard enabledLiveCaptionAIs.contains(liveCaptionAIPreset.rawValue), let url = URL(string: liveCaptionEndpoint), !liveCaptionModel.isEmpty, !key.isEmpty else { throw ServiceError.invalidConfiguration }
         return try await service.perform(text: text, mode: .translate, source: source, target: target,
                                          configuration: .init(endpoint: url, apiKey: key, model: liveCaptionModel))
+    }
+
+    func translateInstantSelection(_ text: String) async throws -> String {
+        await reloadSecretsWithRetry(scope: .translation)
+        let automatic = Language.supported.first(where: { $0.code == "auto" }) ?? sourceLanguage
+        return try await translateUsingCurrentTextEngine(text, source: automatic, target: targetLanguage)
     }
 
     private func translateUsingCurrentTextEngine(_ text: String, source: Language, target: Language) async throws -> String {
@@ -674,7 +687,9 @@ final class AppState {
             enabledLiveCaptionAIs.removeAll(); liveCaptionDeepLEnabled = false
             switch entry {
             case .system: liveCaptionEngineMode = .system
-            case .deepl: liveCaptionEngineMode = .deepl; liveCaptionDeepLEnabled = true
+            case .deepl:
+                liveCaptionEngineMode = .deepl; liveCaptionDeepLEnabled = true
+                if liveCaptionDeepLKey.isEmpty { liveCaptionDeepLKey = readSecret("liveCaptionDeepLKey") }
             case .ai(let preset): liveCaptionEngineMode = .ai; enabledLiveCaptionAIs = [preset.rawValue]; selectLiveCaptionAI(preset)
             }
         } else {
@@ -767,7 +782,9 @@ final class AppState {
         switch entry {
         case .system: return
         case .ai(let preset): documentEngineMode = .ai; applyDocumentAIPreset(preset)
-        case .deepl: documentEngineMode = .deepl
+        case .deepl:
+            documentEngineMode = .deepl
+            if deepLAPIKey.isEmpty { deepLAPIKey = readSecret("deepLAPIKey") }
         }
         try? saveSettings()
     }
@@ -943,19 +960,41 @@ final class AppState {
         try? saveSettings()
     }
 
-    private func reloadSecretsWithRetry(force: Bool = false) async {
+    private enum SecretScope { case currentWork, translation, writing, document, liveCaption }
+
+    private func reloadSecretsWithRetry(scope: SecretScope, force: Bool = false) async {
         let delays: [UInt64] = [0, 250_000_000, 750_000_000]
         for delay in delays {
             if delay > 0 { try? await Task.sleep(nanoseconds: delay) }
             keychainIssue = nil
             let translationAccount = "translationAPIKey.\(profileSuffix(translationAIPreset))"
             let writingAccount = "writingAPIKey.\(profileSuffix(writingAIPreset))"
-            if force || translationAPIKey.isEmpty, let value = readSecretPreservingFailure(translationAccount), !value.isEmpty { translationAPIKey = value }
-            if force || writingAPIKey.isEmpty, let value = readSecretPreservingFailure(writingAccount), !value.isEmpty { writingAPIKey = value }
-            if force || deepLAPIKey.isEmpty, let value = readSecretPreservingFailure("deepLAPIKey"), !value.isEmpty { deepLAPIKey = value }
-            if force || documentAPIKey.isEmpty, let value = readSecretPreservingFailure("documentAPIKey"), !value.isEmpty { documentAPIKey = value }
-            if force || liveCaptionAPIKey.isEmpty, let value = readSecretPreservingFailure("liveCaptionAPIKey.\(profileSuffix(liveCaptionAIPreset))"), !value.isEmpty { liveCaptionAPIKey = value }
-            if force || liveCaptionDeepLKey.isEmpty, let value = readSecretPreservingFailure("liveCaptionDeepLKey"), !value.isEmpty { liveCaptionDeepLKey = value }
+            let effectiveScope: SecretScope = scope == .currentWork
+                ? (mode == .translate ? .translation : (writingUsesTranslationEngine ? .translation : .writing))
+                : scope
+            switch effectiveScope {
+            case .translation:
+                if resolvedTranslationProvider() == .deepl {
+                    if force || deepLAPIKey.isEmpty, let value = readSecretPreservingFailure("deepLAPIKey"), !value.isEmpty { deepLAPIKey = value }
+                } else if resolvedTranslationProvider() == .ai, force || translationAPIKey.isEmpty,
+                          let value = readSecretPreservingFailure(translationAccount), !value.isEmpty { translationAPIKey = value }
+            case .writing:
+                if force || writingAPIKey.isEmpty, let value = readSecretPreservingFailure(writingAccount), !value.isEmpty { writingAPIKey = value }
+            case .document:
+                if documentEngineMode == .shared { await reloadSecretsWithRetry(scope: .translation, force: force); return }
+                if documentEngineMode == .sharedWriting { await reloadSecretsWithRetry(scope: writingUsesTranslationEngine ? .translation : .writing, force: force); return }
+                if documentEngineMode == .deepl {
+                    if force || deepLAPIKey.isEmpty, let value = readSecretPreservingFailure("deepLAPIKey"), !value.isEmpty { deepLAPIKey = value }
+                } else if force || documentAPIKey.isEmpty,
+                          let value = readSecretPreservingFailure("documentAPIKey.\(profileSuffix(documentAIPreset))"), !value.isEmpty { documentAPIKey = value }
+            case .liveCaption:
+                if liveCaptionEngineMode == .shared { await reloadSecretsWithRetry(scope: .translation, force: force); return }
+                if liveCaptionEngineMode == .deepl {
+                    if force || liveCaptionDeepLKey.isEmpty, let value = readSecretPreservingFailure("liveCaptionDeepLKey"), !value.isEmpty { liveCaptionDeepLKey = value }
+                } else if liveCaptionEngineMode == .ai, force || liveCaptionAPIKey.isEmpty,
+                          let value = readSecretPreservingFailure("liveCaptionAPIKey.\(profileSuffix(liveCaptionAIPreset))"), !value.isEmpty { liveCaptionAPIKey = value }
+            case .currentWork: break
+            }
             if keychainIssue == nil { return }
         }
     }

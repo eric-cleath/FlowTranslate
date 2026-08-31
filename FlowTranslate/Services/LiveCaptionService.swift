@@ -42,6 +42,7 @@ final class LiveCaptionModel {
     var errorMessage: String?
     var isRunning = false
     var detectedLanguageName = ""
+    private var hostWindowVisible = false
 
     private let capture = LiveAudioCapture()
     private var translationTask: Task<Void, Never>?
@@ -64,7 +65,7 @@ final class LiveCaptionModel {
             }
             isRunning = true
             status = audioSource == .microphone ? "正在聆听麦克风…" : (audioSource == .application ? "正在聆听 \(selectedApplicationName.isEmpty ? "指定应用" : selectedApplicationName)…" : "正在聆听全部应用…")
-            if showsFloatingWindow { LiveCaptionPanelController.shared.show(model: self) }
+            if showsFloatingWindow && !hostWindowVisible { LiveCaptionPanelController.shared.show(model: self) }
         } catch {
             errorMessage = error.localizedDescription
             status = "启动失败"
@@ -84,6 +85,16 @@ final class LiveCaptionModel {
         translatedText = ""
         detectedLanguageName = ""
         errorMessage = nil
+    }
+
+    func setHostWindowVisible(_ visible: Bool) {
+        hostWindowVisible = visible
+        guard isRunning, showsFloatingWindow else {
+            if visible { LiveCaptionPanelController.shared.hide() }
+            return
+        }
+        if visible { LiveCaptionPanelController.shared.hide() }
+        else { LiveCaptionPanelController.shared.show(model: self) }
     }
 
     func saveSettings() {
@@ -163,6 +174,7 @@ private final class LiveAudioCapture: NSObject, @unchecked Sendable, SCStreamOut
         }
         let request = SFSpeechAudioBufferRecognitionRequest()
         request.shouldReportPartialResults = true
+        request.addsPunctuation = true
         self.request = request
         task = recognizer.recognitionTask(with: request) { result, error in
             if let result { update(result.bestTranscription.formattedString, result.isFinal) }
@@ -235,8 +247,8 @@ private enum LiveCaptionError: LocalizedError {
     case speechPermission, microphonePermission, recognizerUnavailable, noDisplay
     var errorDescription: String? {
         switch self {
-        case .speechPermission: "尚未获得语音识别权限，请在系统设置的隐私与安全性中允许 PallasOwl。"
-        case .microphonePermission: "尚未获得麦克风权限，请在系统设置的隐私与安全性中允许 PallasOwl。"
+        case .speechPermission: "尚未获得语音识别权限，请在系统设置的隐私与安全性中允许 PallasOwl Translator。"
+        case .microphonePermission: "尚未获得麦克风权限，请在系统设置的隐私与安全性中允许 PallasOwl Translator。"
         case .recognizerUnavailable: "当前语言的系统语音识别暂时不可用。"
         case .noDisplay: "没有找到可捕获系统音频的显示器。"
         }
@@ -279,8 +291,8 @@ private struct LiveCaptionOverlay: View {
             if model.displayMode != .translationOnly, !model.sourceText.isEmpty {
                 Text(model.sourceText).foregroundStyle(.white.opacity(0.82))
             }
-            if model.displayMode != .sourceOnly {
-                Text(model.translatedText.isEmpty ? model.sourceText : model.translatedText).foregroundStyle(.white).fontWeight(.semibold)
+            if model.displayMode != .sourceOnly, !model.translatedText.isEmpty {
+                Text(model.translatedText).foregroundStyle(.white).fontWeight(.semibold)
             }
         }
         .font(.system(size: model.captionFontSize))

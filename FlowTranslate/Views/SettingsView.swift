@@ -3,7 +3,7 @@ import AVFoundation
 import SwiftUI
 
 private enum SettingsCategory: String, CaseIterable, Identifiable {
-    case general = "通用设置", translation = "文本翻译", writing = "AI 文本处理", document = "文档翻译", liveCaption = "实时字幕", shortcuts = "快捷键"
+    case general = "通用设置", translation = "文本翻译", writing = "AI 文本处理", document = "文档翻译", liveCaption = "实时字幕", shortcuts = "快捷键", about = "关于"
     var id: Self { self }
 }
 
@@ -68,6 +68,8 @@ struct SettingsView: View {
     @State private var showsDocumentEngines = false
     @State private var showsLiveCaptionEngines = false
     @State private var showsVoicePicker = false
+    @AppStorage("instantSelectionEnabled") private var instantSelectionEnabled = false
+    @AppStorage("instantSelectionAutomatic") private var instantSelectionAutomatic = false
 
     var body: some View {
         VStack(spacing: 18) {
@@ -81,6 +83,7 @@ struct SettingsView: View {
                 case .document: documentSettings
                 case .liveCaption: liveCaptionSettings
                 case .shortcuts: shortcutSettings
+                case .about: aboutSettings
                 }
             }.frame(maxWidth: .infinity, maxHeight: .infinity)
         }
@@ -404,7 +407,7 @@ struct SettingsView: View {
     private var shortcutSettings: some View {
         GroupBox {
             VStack(spacing: 0) {
-                header("全局快捷键", "在任意 App 中调用 PallasOwl"); Divider()
+                header("全局快捷键", "在任意 App 中调用 PallasOwl Translator"); Divider()
                 ForEach(ShortcutAction.allCases) { shortcutEditor($0) }
                 if duplicateShortcuts { Label("存在重复快捷键，请修改后再使用。", systemImage: "exclamationmark.triangle.fill").font(.caption).foregroundStyle(.orange).padding(.top, 10) }
                 Spacer()
@@ -483,12 +486,24 @@ struct SettingsView: View {
         GroupBox {
             VStack(alignment: .leading, spacing: 0) {
                 header("通用设置", "控制启动方式、界面语言和阅读体验"); Divider()
-                settingRow("开机自动启动", "登录 macOS 后自动启动 PallasOwl") {
+                settingRow("开机自动启动", "登录 macOS 后自动启动 PallasOwl Translator") {
                     Toggle("", isOn: Binding(get: { state.launchAtLogin }, set: { state.setLaunchAtLogin($0) })).labelsHidden().toggleStyle(.switch)
                 }
                 settingRow("界面语言", "默认跟随 macOS；切换后界面立即刷新") {
                     Picker("", selection: Binding(get: { state.appLanguage }, set: { state.setAppLanguage($0) })) { ForEach(AppLanguage.allCases) { Text($0.displayName).tag($0) } }
                         .labelsHidden().frame(width: 180)
+                }
+                settingRow("选中即译", "在其他 App 中用鼠标选中文字后显示翻译入口；不影响现有划词翻译") {
+                    Toggle("", isOn: $instantSelectionEnabled).labelsHidden().toggleStyle(.switch)
+                        .onChange(of: instantSelectionEnabled) { _, enabled in GlobalCaptureService.shared.configureInstantSelection(enabled: enabled) }
+                }
+                if instantSelectionEnabled {
+                    settingRow("选中即译方式", "默认先显示 T 图标，可改为选中后直接翻译") {
+                        Picker("", selection: $instantSelectionAutomatic) {
+                            Text("显示 T 图标").tag(false)
+                            Text("自动显示结果").tag(true)
+                        }.labelsHidden().frame(width: 170)
+                    }
                 }
                 settingRow("正文字号", "调整原文和结果区域的字体大小") { slider(Binding(get: { state.editorFontSize }, set: { state.editorFontSize = $0 }), 14...22) }
                 settingRow("正文行距", "调整长段落的阅读间距") { slider(Binding(get: { state.editorLineSpacing }, set: { state.editorLineSpacing = $0 }), 2...10) }
@@ -510,6 +525,40 @@ struct SettingsView: View {
             }.padding(12)
         }
     }
+
+    private var aboutSettings: some View {
+        GroupBox {
+            VStack(spacing: 18) {
+                Image(nsImage: NSApplication.shared.applicationIconImage)
+                    .resizable().scaledToFit().frame(width: 92, height: 92)
+                VStack(spacing: 6) {
+                    Text("PallasOwl Translator").font(.title.bold())
+                    Text("AI 翻译、文本处理、文档翻译与实时字幕")
+                        .foregroundStyle(.secondary)
+                    Text("Version \(appVersion) (\(buildNumber))")
+                        .font(.callout.monospacedDigit()).foregroundStyle(.secondary)
+                }
+                Divider()
+                VStack(spacing: 12) {
+                    Link(destination: URL(string: "mailto:pallasowl2026@gmail.com")!) {
+                        Label("pallasowl2026@gmail.com", systemImage: "envelope")
+                    }
+                    Link(destination: URL(string: "https://github.com/eric-cleath/FlowTranslate")!) {
+                        Label("GitHub 项目", systemImage: "chevron.left.forwardslash.chevron.right")
+                    }
+                    Link(destination: URL(string: "https://github.com/eric-cleath/FlowTranslate/releases/latest")!) {
+                        Label("查看最新版本", systemImage: "arrow.down.circle")
+                    }
+                }
+                Spacer()
+                Text("MIT License  ·  Copyright © 2026 PallasOwl")
+                    .font(.caption).foregroundStyle(.tertiary)
+            }.padding(28).frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+
+    private var appVersion: String { Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "—" }
+    private var buildNumber: String { Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "—" }
 
     private func slider(_ value: Binding<Double>, _ range: ClosedRange<Double>) -> some View {
         HStack { Slider(value: Binding(get: { value.wrappedValue }, set: { value.wrappedValue = $0; try? state.saveSettings() }), in: range, step: 1).frame(width: 180); Text("\(Int(value.wrappedValue))") }

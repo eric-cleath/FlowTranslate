@@ -96,12 +96,14 @@ struct TranslatorView: View {
         .frame(minWidth: 760, minHeight: 520)
         .onAppear {
             bindGlobalShortcuts()
+            state.liveCaption.setHostWindowVisible(true)
             if UserDefaults.standard.bool(forKey: "openLiveCaptionMode") {
                 UserDefaults.standard.removeObject(forKey: "openLiveCaptionMode")
                 showsDocumentMode = false
                 showsLiveCaptionMode = true
             }
         }
+        .onDisappear { state.liveCaption.setHostWindowVisible(false) }
         .onChange(of: state.input) { _, value in
             if value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 state.output = ""; state.translationSummary = ""; state.errorMessage = nil; state.summaryError = nil
@@ -142,6 +144,12 @@ struct TranslatorView: View {
         }
         capture.onOpenLiveCaption = { showLiveCaption(start: false) }
         capture.onToggleLiveCaption = { showLiveCaption(start: true) }
+        capture.onInstantSelection = { text, completion in
+            Task {
+                do { completion(.success(try await state.translateInstantSelection(text))) }
+                catch { completion(.failure(error)) }
+            }
+        }
         capture.onError = {
             state.prepareInput("", activate: false)
             state.errorMessage = $0
@@ -173,7 +181,7 @@ struct TranslatorView: View {
         openWindow(id: "translator")
         NSApp.activate(ignoringOtherApps: true)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            NSApp.windows.first(where: { $0.title == "PallasOwl" })?.makeKeyAndOrderFront(nil)
+            NSApp.windows.first(where: { $0.title == "PallasOwl Translator" })?.makeKeyAndOrderFront(nil)
         }
         if autoTranslate {
             Task { await state.run() }

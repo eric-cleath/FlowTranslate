@@ -8,7 +8,7 @@ struct PallasOwlApp: App {
     init() { GlobalCaptureService.shared.start() }
 
     var body: some Scene {
-        Window("PallasOwl", id: "translator") {
+        Window("PallasOwl Translator", id: "translator") {
             TranslatorView().environment(state).environment(\.locale, state.locale)
         }
         .defaultSize(width: 820, height: 560)
@@ -69,7 +69,7 @@ private struct MenuBarContent: View {
         Button("设置…") { openSettings() }
             .keyboardShortcut(",")
         Divider()
-        Button("退出 PallasOwl") { NSApplication.shared.terminate(nil) }
+        Button("退出 PallasOwl Translator") { NSApplication.shared.terminate(nil) }
             .keyboardShortcut("q")
     }
 

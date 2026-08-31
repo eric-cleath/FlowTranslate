@@ -5,7 +5,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>PallasOwl</string>
+	<string>PallasOwl Translator</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -25,13 +25,13 @@
 	<key>LSMinimumSystemVersion</key>
 	<string>$(MACOSX_DEPLOYMENT_TARGET)</string>
 	<key>NSAudioCaptureUsageDescription</key>
-	<string>PallasOwl 需要读取所选应用的系统声音，以进行实时语音转写和翻译。</string>
+	<string>PallasOwl Translator 需要读取所选应用的系统声音，以进行实时语音转写和翻译。</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>PallasOwl 需要使用麦克风进行实时语音转写和翻译。</string>
+	<string>PallasOwl Translator 需要使用麦克风进行实时语音转写和翻译。</string>
 	<key>NSScreenCaptureUsageDescription</key>
-	<string>PallasOwl 需要捕获所选应用或全部应用的系统音频，以生成实时字幕；不会保存屏幕画面。</string>
+	<string>PallasOwl Translator 需要捕获所选应用或全部应用的系统音频，以生成实时字幕；不会保存屏幕画面。</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
-	<string>PallasOwl 需要使用语音识别将实时声音转换为字幕。</string>
+	<string>PallasOwl Translator 需要使用语音识别将实时声音转换为字幕。</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
 </dict>

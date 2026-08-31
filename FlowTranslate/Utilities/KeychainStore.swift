@@ -11,7 +11,11 @@ enum KeychainStore {
             kSecAttrService as String: service,
             kSecAttrAccount as String: account
         ]
-        SecItemDelete(query as CFDictionary)
+        // Update an existing item in place so its Access Control (including the
+        // user's "Always Allow" choice) survives configuration changes.
+        let updateStatus = SecItemUpdate(query as CFDictionary, [kSecValueData as String: data] as CFDictionary)
+        if updateStatus == errSecSuccess { return }
+        guard updateStatus == errSecItemNotFound else { throw KeychainError.status(updateStatus) }
         var attributes = query
         attributes[kSecValueData as String] = data
         let status = SecItemAdd(attributes as CFDictionary, nil)

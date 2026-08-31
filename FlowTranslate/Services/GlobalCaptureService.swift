@@ -148,15 +148,42 @@ final class GlobalCaptureService {
     private func handlePossibleInstantSelection(at point: CGPoint) {
         guard NSWorkspace.shared.frontmostApplication?.bundleIdentifier != Bundle.main.bundleIdentifier else { return }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) { [weak self] in
-            guard let self, let text = self.accessibilitySelectedText(), text.count <= 5_000 else { return }
-            let cleaned = text.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard cleaned.count >= 2 else { return }
-            if cleaned == self.instantSelectionText, Date().timeIntervalSince(self.lastInstantSelectionDate) < 1 { return }
-            self.instantSelectionText = cleaned
-            self.lastInstantSelectionDate = Date()
-            self.instantSelectionPoint = point
-            if UserDefaults.standard.bool(forKey: "instantSelectionAutomatic") { self.beginInstantTranslation() }
-            else { self.showInstantTranslateIcon(at: point) }
+            guard let self else { return }
+            if let text = self.accessibilitySelectedText(), !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                self.presentInstantSelection(text, at: point)
+            } else {
+                self.captureSelectedTextSilently { [weak self] text in
+                    self?.presentInstantSelection(text, at: point)
+                }
+            }
+        }
+    }
+
+    private func presentInstantSelection(_ text: String, at point: CGPoint) {
+        guard text.count <= 5_000 else { return }
+        let cleaned = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard cleaned.count >= 2 else { return }
+        if cleaned == instantSelectionText, Date().timeIntervalSince(lastInstantSelectionDate) < 1 { return }
+        instantSelectionText = cleaned
+        lastInstantSelectionDate = Date()
+        instantSelectionPoint = point
+        if UserDefaults.standard.bool(forKey: "instantSelectionAutomatic") { beginInstantTranslation() }
+        else { showInstantTranslateIcon(at: point) }
+    }
+
+    private func captureSelectedTextSilently(completion: @escaping (String) -> Void) {
+        let pasteboard = NSPasteboard.general
+        let previousString = pasteboard.string(forType: .string)
+        let previousChange = pasteboard.changeCount
+        postCommandC()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.22) {
+            guard pasteboard.changeCount != previousChange,
+                  let text = pasteboard.string(forType: .string), !text.isEmpty else { return }
+            completion(text)
+            if let previousString {
+                pasteboard.clearContents()
+                pasteboard.setString(previousString, forType: .string)
+            }
         }
     }
 

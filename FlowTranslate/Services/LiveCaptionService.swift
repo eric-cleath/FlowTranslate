@@ -5,6 +5,25 @@ import ScreenCaptureKit
 import Speech
 import SwiftUI
 
+// TCC invokes these authorization callbacks on its own background queue. Keep
+// the callback closures outside MainActor isolation so Swift 6 does not trap
+// when the system replies off the main thread.
+private func requestSpeechRecognitionPermission() async -> Bool {
+    await withCheckedContinuation { continuation in
+        SFSpeechRecognizer.requestAuthorization { status in
+            continuation.resume(returning: status == .authorized)
+        }
+    }
+}
+
+private func requestMicrophonePermission() async -> Bool {
+    await withCheckedContinuation { continuation in
+        AVCaptureDevice.requestAccess(for: .audio) { allowed in
+            continuation.resume(returning: allowed)
+        }
+    }
+}
+
 @MainActor
 @Observable
 final class LiveCaptionModel {
@@ -137,9 +156,7 @@ private final class LiveAudioCapture: NSObject, @unchecked Sendable, SCStreamOut
 
     @MainActor
     func start(source: LiveAudioSource, applicationBundleID: String, languageCode: String, update: @escaping (String, Bool) -> Void) async throws {
-        let authorized = await withCheckedContinuation { continuation in
-            SFSpeechRecognizer.requestAuthorization { continuation.resume(returning: $0 == .authorized) }
-        }
+        let authorized = await requestSpeechRecognitionPermission()
         guard authorized else { throw LiveCaptionError.speechPermission }
         guard let recognizer = SFSpeechRecognizer(locale: Locale(identifier: languageCode)), recognizer.isAvailable else {
             throw LiveCaptionError.recognizerUnavailable
@@ -172,9 +189,7 @@ private final class LiveAudioCapture: NSObject, @unchecked Sendable, SCStreamOut
         let permission = AVCaptureDevice.authorizationStatus(for: .audio)
         if permission == .denied || permission == .restricted { throw LiveCaptionError.microphonePermission }
         if permission == .notDetermined {
-            let allowed = await withCheckedContinuation { continuation in
-                AVCaptureDevice.requestAccess(for: .audio) { continuation.resume(returning: $0) }
-            }
+            let allowed = await requestMicrophonePermission()
             guard allowed else { throw LiveCaptionError.microphonePermission }
         }
         let input = audioEngine.inputNode

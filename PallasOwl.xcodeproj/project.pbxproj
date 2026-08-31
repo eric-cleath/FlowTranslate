@@ -43,6 +43,7 @@
 		7BD591C449BC3048933927EF /* KeychainStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainStore.swift; sourceTree = "<group>"; };
 		851D21A6B9F04A6425915EEF /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
 		8AAC683D6E02194B7630B19C /* FlowTranslate.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = FlowTranslate.entitlements; sourceTree = "<group>"; };
+		A3DD7C0CB5E4FA53C181340D /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		B045E82AFCB858888E6972C0 /* DeepLService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeepLService.swift; sourceTree = "<group>"; };
 		BD7D675D5A8D9623F3216A03 /* ja */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ja; path = ja.lproj/Localizable.strings; sourceTree = "<group>"; };
 		C53626090981AB6770D213A1 /* LiveCaptionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveCaptionService.swift; sourceTree = "<group>"; };
@@ -118,6 +119,7 @@
 				3021665D840B37AC8CFD03D8 /* Assets.xcassets */,
 				8AAC683D6E02194B7630B19C /* FlowTranslate.entitlements */,
 				7529570319D3AC17571FCC25 /* FlowTranslateApp.swift */,
+				A3DD7C0CB5E4FA53C181340D /* Info.plist */,
 				7B8BFEE544E3974157C95D03 /* MenuBarIcon.swift */,
 				A8A8B40D97FEC5B67E1EAF27 /* Localizable.strings */,
 				6A23FD100C2362B0D47B6568 /* Models */,
@@ -243,7 +245,11 @@
 				CODE_SIGN_ENTITLEMENTS = FlowTranslate/FlowTranslate.entitlements;
 				COMBINE_HIDPI_IMAGES = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = FlowTranslate/Info.plist;
+				INFOPLIST_KEY_NSAudioCaptureUsageDescription = "PallasOwl 需要读取所选应用的系统声音，以进行实时语音转写和翻译。";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "PallasOwl 需要使用麦克风进行实时语音转写和翻译。";
+				INFOPLIST_KEY_NSScreenCaptureUsageDescription = "PallasOwl 需要捕获所选应用或全部应用的系统音频，以生成实时字幕；不会保存屏幕画面。";
 				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "PallasOwl 需要使用语音识别将实时声音转换为字幕。";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -289,7 +295,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 91;
+				CURRENT_PROJECT_VERSION = 92;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
@@ -311,7 +317,7 @@
 				INFOPLIST_KEY_CFBundleDisplayName = PallasOwl;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 0.9.1;
+				MARKETING_VERSION = 0.9.2;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
@@ -331,7 +337,11 @@
 				CODE_SIGN_ENTITLEMENTS = FlowTranslate/FlowTranslate.entitlements;
 				COMBINE_HIDPI_IMAGES = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = FlowTranslate/Info.plist;
+				INFOPLIST_KEY_NSAudioCaptureUsageDescription = "PallasOwl 需要读取所选应用的系统声音，以进行实时语音转写和翻译。";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "PallasOwl 需要使用麦克风进行实时语音转写和翻译。";
+				INFOPLIST_KEY_NSScreenCaptureUsageDescription = "PallasOwl 需要捕获所选应用或全部应用的系统音频，以生成实时字幕；不会保存屏幕画面。";
 				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "PallasOwl 需要使用语音识别将实时声音转换为字幕。";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -377,7 +387,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 91;
+				CURRENT_PROJECT_VERSION = 92;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -393,7 +403,7 @@
 				INFOPLIST_KEY_CFBundleDisplayName = PallasOwl;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 0.9.1;
+				MARKETING_VERSION = 0.9.2;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";

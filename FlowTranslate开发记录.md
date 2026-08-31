@@ -10,11 +10,24 @@ tags:
   - AI写作
   - 开发记录
 status: active
-current_version: 0.9.1
+current_version: 0.9.2
 updated: 2026-08-31
 ---
 
 # PallasOwl（原 FlowTranslate）开发记录与下一版本计划
+
+## 0.9.2（2026-08-31）— 系统音频启动崩溃修复
+
+- 修复选择“全部应用”或“指定应用”后点击“开始字幕”，PallasOwl 被 macOS 隐私保护机制直接终止的问题。
+- Info.plist 补充 `NSScreenCaptureUsageDescription`，向系统说明 ScreenCaptureKit 仅用于捕获应用音频，不保存屏幕画面。
+- Info.plist 补充 `NSAudioCaptureUsageDescription`，兼容新版 macOS 对系统音频捕获的独立用途说明。
+- 保留麦克风和语音识别用途说明，三类实时字幕权限现在均有明确说明。
+
+### 0.9.2 测试重点
+
+- 选择“全部应用”后开始字幕，应弹出系统权限提示或正常运行，不再直接退出。
+- 选择某个指定 App 后开始字幕，验证只接收该 App 的声音。
+- 首次授权后若系统要求退出 App，应重新打开 PallasOwl 再开始字幕。
 
 ## 0.9.1（2026-08-31）— 实时字幕配置与音频源完善
 

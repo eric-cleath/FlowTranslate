@@ -93,7 +93,14 @@ final class DocumentTranslationModel {
                     try Task.checkCancellation()
                     status = "正在翻译第 \(index + 1)/\(chunks.count) 段…"
                     progress = Double(index) / Double(chunks.count)
-                    let translated = try await appState.translateDocumentChunk(chunk, source: sourceLanguage, target: targetLanguage)
+                    var translated = try await appState.translateDocumentChunk(chunk, source: sourceLanguage, target: targetLanguage)
+                    if isInvalidTranslation(translated, for: chunk) {
+                        status = "第 \(index + 1) 段结果异常，正在重试…"
+                        translated = try await appState.translateDocumentChunk(chunk, source: sourceLanguage, target: targetLanguage)
+                    }
+                    guard !isInvalidTranslation(translated, for: chunk) else {
+                        throw ServiceError.requestFailed("第 \(index + 1) 段翻译结果异常，请检查引擎后重试。")
+                    }
                     sections.append(.init(source: chunk, translation: translated))
                 }
                 progress = 1; status = "翻译完成"; isWorking = false; activity = ""
@@ -113,6 +120,14 @@ final class DocumentTranslationModel {
         sections = []; progress = 0; status = ""; errorMessage = nil
     }
 
+    private func isInvalidTranslation(_ translation: String, for source: String) -> Bool {
+        let value = translation.trimmingCharacters(in: .whitespacesAndNewlines)
+        let labels = ["自动检测", sourceLanguage.name, targetLanguage.name]
+        if value.isEmpty || labels.contains(value) { return true }
+        if source.count > 250 && value.count < 30 { return true }
+        return false
+    }
+
     func export() {
         guard !resultText.isEmpty else { return }
         let panel = NSSavePanel()
@@ -123,7 +138,10 @@ final class DocumentTranslationModel {
     }
 
     private func exportText(title: String) -> String {
-        guard exportFormat == .markdown else { return resultText }
+        guard exportFormat == .markdown else {
+            if outputStyle == .translated { return resultText }
+            return sections.map { "原文\n\($0.source)\n\n译文\n\($0.translation)" }.joined(separator: "\n\n---\n\n")
+        }
         let safeTitle = title.replacingOccurrences(of: "\"", with: "\\\"")
         let date = ISO8601DateFormatter().string(from: Date())
         let frontmatter = """
@@ -145,13 +163,33 @@ final class DocumentTranslationModel {
         if outputStyle == .translated {
             return frontmatter + sections.map(\.translation).joined(separator: "\n\n") + "\n"
         }
-        let rows = sections.map { "| \(tableCell($0.source)) | \(tableCell($0.translation)) |" }.joined(separator: "\n")
-        return frontmatter + "| 原文 | 译文 |\n|---|---|\n" + rows + "\n"
+        let rows = sections.flatMap(pairedParagraphs).map { pair in
+            "<tr><td>\(htmlCell(pair.0))</td><td>\(htmlCell(pair.1))</td></tr>"
+        }.joined(separator: "\n")
+        return frontmatter + """
+        <table style="width:100%; table-layout:fixed;">
+        <colgroup><col style="width:50%;"><col style="width:50%;"></colgroup>
+        <thead><tr><th>原文</th><th>译文</th></tr></thead>
+        <tbody>
+        \(rows)
+        </tbody>
+        </table>
+
+        """
     }
 
-    private func tableCell(_ text: String) -> String {
+    private func pairedParagraphs(_ section: DocumentTranslationSection) -> [(String, String)] {
+        let source = section.source.components(separatedBy: "\n\n").filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        let target = section.translation.components(separatedBy: "\n\n").filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        guard source.count == target.count, source.count > 1 else { return [(section.source, section.translation)] }
+        return Array(zip(source, target))
+    }
+
+    private func htmlCell(_ text: String) -> String {
         text.trimmingCharacters(in: .whitespacesAndNewlines)
-            .replacingOccurrences(of: "|", with: "\\|")
+            .replacingOccurrences(of: "&", with: "&amp;")
+            .replacingOccurrences(of: "<", with: "&lt;")
+            .replacingOccurrences(of: ">", with: "&gt;")
             .replacingOccurrences(of: "\r\n", with: "<br>")
             .replacingOccurrences(of: "\n", with: "<br>")
     }
@@ -244,7 +282,7 @@ struct DocumentTranslationView: View {
     private func textPane(_ title: String, text: String, placeholder: String) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(title).font(.headline)
-            ScrollView { Text(text.isEmpty ? placeholder : text).foregroundStyle(text.isEmpty ? .tertiary : .primary).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .topLeading).padding(12) }
+            ScrollView { Text(text.isEmpty ? placeholder : text).font(.system(size: state.editorFontSize)).lineSpacing(state.editorLineSpacing).foregroundStyle(text.isEmpty ? .tertiary : .primary).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .topLeading).padding(12) }
                 .background(.background.secondary, in: RoundedRectangle(cornerRadius: 10))
         }.frame(minWidth: 350)
     }

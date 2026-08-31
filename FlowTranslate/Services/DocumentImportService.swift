@@ -65,7 +65,7 @@ struct DocumentImportService {
             if value.count < 20, let image = page?.thumbnail(of: CGSize(width: 2200, height: 3000), for: .mediaBox) {
                 value = try await recognize(image: image)
             }
-            if !value.isEmpty { pages.append(value) }
+            if !value.isEmpty { pages.append(Self.normalizeExtractedText(value)) }
             await progress(0.05 + (Double(index + 1) / Double(max(document.pageCount, 1))) * 0.25, "正在解析第 \(index + 1)/\(document.pageCount) 页…")
         }
         return pages.joined(separator: "\n\n")
@@ -126,6 +126,29 @@ struct DocumentImportService {
 
     private static func isListStart(_ text: String) -> Bool {
         text.range(of: #"^(?:[-•·]|\d+[.)]|[A-Za-z][.)])\s+"#, options: .regularExpression) != nil
+    }
+
+    static func normalizeExtractedText(_ text: String) -> String {
+        let rawLines = text.replacingOccurrences(of: "\r\n", with: "\n").replacingOccurrences(of: "\r", with: "\n").components(separatedBy: "\n")
+        var paragraphs: [String] = []
+        var current = ""
+        func flush() {
+            let value = current.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !value.isEmpty { paragraphs.append(value) }
+            current = ""
+        }
+        for raw in rawLines {
+            let line = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            if line.isEmpty { flush(); continue }
+            if current.isEmpty { current = line; continue }
+            let previousEndsSentence = current.range(of: #"[.!?。！？:：]$"#, options: .regularExpression) != nil
+            let blockBoundary = isListStart(line) || (current.count < 70 && previousEndsSentence) || (line.count < 70 && line.range(of: #"[.!?。！？]$"#, options: .regularExpression) == nil)
+            if blockBoundary { flush(); current = line }
+            else if current.last == "-", usesLatinSpacing(current, line) { current.removeLast(); current += line }
+            else { current += usesLatinSpacing(current, line) ? " " + line : line }
+        }
+        flush()
+        return paragraphs.joined(separator: "\n\n")
     }
 
     static func chunks(from text: String, limit: Int = 3500) -> [String] {

@@ -26,21 +26,26 @@ struct TranslatorView: View {
             } else {
 
             HStack {
-                if state.mode == .crossLanguageWriting {
+                if state.mode == .polish {
+                    Label("保持原文语言", systemImage: "character.cursor.ibeam")
+                        .frame(maxWidth: .infinity)
+                } else if state.mode == .crossLanguageWriting {
                     Text("简体中文").frame(maxWidth: .infinity)
                 } else {
                     languagePicker("源语言", selection: $state.sourceLanguage, allowsAuto: true)
                 }
-                Button(action: state.swapLanguages) {
-                    Image(systemName: "arrow.left.arrow.right")
+                if state.mode != .polish {
+                    Button(action: state.swapLanguages) {
+                        Image(systemName: "arrow.left.arrow.right")
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(state.mode == .crossLanguageWriting || state.sourceLanguage.code == "auto")
+                    languagePicker(
+                        "目标语言",
+                        selection: state.mode == .crossLanguageWriting ? $state.crossWritingTargetLanguage : $state.targetLanguage,
+                        allowsAuto: false
+                    )
                 }
-                .buttonStyle(.plain)
-                .disabled(state.mode == .crossLanguageWriting || state.sourceLanguage.code == "auto")
-                languagePicker(
-                    "目标语言",
-                    selection: state.mode == .crossLanguageWriting ? $state.crossWritingTargetLanguage : $state.targetLanguage,
-                    allowsAuto: false
-                )
             }
             .padding(.horizontal)
 
@@ -54,7 +59,7 @@ struct TranslatorView: View {
                 VStack(alignment: .leading, spacing: 7) {
                     HStack { Label("译文总结", systemImage: "text.alignleft").font(.headline); Spacer(); if state.isSummarizing { ProgressView().controlSize(.small) } }
                     if let error = state.summaryError { Text(error).font(.callout).foregroundStyle(.red) }
-                    else if !state.translationSummary.isEmpty { Text(state.translationSummary).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading) }
+                    else if !state.translationSummary.isEmpty { Text(state.translationSummary).font(.system(size: state.editorFontSize)).lineSpacing(state.editorLineSpacing).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading) }
                 }.padding(12).background(Color.accentColor.opacity(0.07), in: RoundedRectangle(cornerRadius: 10)).padding(.horizontal)
             }
 

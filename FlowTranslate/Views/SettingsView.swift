@@ -3,7 +3,7 @@ import AVFoundation
 import SwiftUI
 
 private enum SettingsCategory: String, CaseIterable, Identifiable {
-    case general = "通用设置", translation = "文本翻译", writing = "AI 文本处理", document = "文档翻译", shortcuts = "快捷键"
+    case general = "通用设置", translation = "文本翻译", writing = "AI 文本处理", document = "文档翻译", liveCaption = "实时字幕", shortcuts = "快捷键"
     var id: Self { self }
 }
 
@@ -62,21 +62,24 @@ struct SettingsView: View {
     @State private var selectedTranslationID = ""
     @State private var selectedWritingID = ""
     @State private var selectedDocumentID = ""
+    @State private var selectedLiveCaptionID = ""
     @State private var showsTranslationEngines = false
     @State private var showsWritingEngines = false
     @State private var showsDocumentEngines = false
+    @State private var showsLiveCaptionEngines = false
     @State private var showsVoicePicker = false
 
     var body: some View {
         VStack(spacing: 18) {
             Picker("设置分类", selection: $category) { ForEach(SettingsCategory.allCases) { Text(LocalizedStringKey($0.rawValue)).tag($0) } }
-                .pickerStyle(.segmented).frame(width: 580)
+                .pickerStyle(.segmented).frame(width: 760)
             Group {
                 switch category {
                 case .general: generalSettings
                 case .translation: translationSettings
                 case .writing: writingSettings
                 case .document: documentSettings
+                case .liveCaption: liveCaptionSettings
                 case .shortcuts: shortcutSettings
                 }
             }.frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -91,7 +94,157 @@ struct SettingsView: View {
             selectedTranslationID = state.addedTranslationServices.first?.id ?? ""
             selectedWritingID = state.addedWritingServices.first?.id ?? ""
             selectedDocumentID = state.addedDocumentServices.first?.id ?? ""
+            selectedLiveCaptionID = state.addedLiveCaptionServices.first?.id ?? ""
         }
+        .onDisappear {
+            // The Settings scene is reused by macOS. Reset the page so opening
+            // Settings from the main window does not remain on the last page.
+            category = .translation
+        }
+    }
+
+    private var liveCaptionSettings: some View {
+        @Bindable var live = state.liveCaption
+        return GroupBox {
+            ScrollView {
+              VStack(alignment: .leading, spacing: 0) {
+                header("实时字幕", "实时转写麦克风或应用声音，并按需要翻译为目标语言")
+                Divider()
+                liveCaptionEngineConfiguration
+                    .padding(.vertical, 12)
+                Divider()
+                settingRow("声音来源", "麦克风需要麦克风权限；应用声音需要屏幕与系统音频录制权限") {
+                    Picker("", selection: $live.audioSource) { ForEach(LiveAudioSource.allCases) { Text($0.rawValue).tag($0) } }.labelsHidden().frame(width: 160)
+                }
+                if live.audioSource == .application {
+                    settingRow("指定应用", "仅捕获所选应用的播放声音；应用启动和退出后列表会自动更新") {
+                        Picker("", selection: Binding(get: { live.selectedApplicationBundleID }, set: { id in
+                            live.selectedApplicationBundleID = id
+                            live.selectedApplicationName = runningApplications.first(where: { $0.bundleIdentifier == id })?.localizedName ?? ""
+                        })) {
+                            ForEach(runningApplications, id: \.bundleIdentifier) { app in
+                                Text(app.localizedName ?? app.bundleIdentifier ?? "应用").tag(app.bundleIdentifier ?? "")
+                            }
+                        }.labelsHidden().frame(width: 210)
+                    }
+                }
+                settingRow("输入语言", "自动检测使用系统识别语言启动，并根据识别文字判断实际语言") {
+                    Picker("", selection: $live.sourceLanguage) { ForEach(Language.supported) { Text(LocalizedStringKey($0.name)).tag($0) } }.labelsHidden().frame(width: 160)
+                }
+                settingRow("目标语言", "检测到输入已经是目标语言时可以只转写、不翻译") {
+                    Picker("", selection: $live.targetLanguage) { ForEach(Language.supported.filter { $0.code != "auto" }) { Text(LocalizedStringKey($0.name)).tag($0) } }.labelsHidden().frame(width: 160)
+                }
+                settingRow("目标语言语音仅转写", "输入语音与目标语言相同时只记录原文，避免重复翻译和消耗 Token") {
+                    Toggle("", isOn: $live.skipTranslationForTargetLanguage).labelsHidden().toggleStyle(.switch)
+                }
+                settingRow("字幕内容", "选择悬浮字幕显示原文、译文或双语") {
+                    Picker("", selection: $live.displayMode) { ForEach(LiveCaptionDisplayMode.allCases) { Text($0.rawValue).tag($0) } }.labelsHidden().frame(width: 160)
+                }
+                settingRow("悬浮字幕", "显示在所有桌面空间和全屏应用上方") {
+                    Toggle("", isOn: $live.showsFloatingWindow).labelsHidden().toggleStyle(.switch)
+                }
+                settingRow("字幕字号", "调整悬浮字幕的文字大小") {
+                    HStack { Slider(value: $live.captionFontSize, in: 16...42, step: 1).frame(width: 180); Text("\(Int(live.captionFontSize))") }
+                }
+                settingRow("权限检查", "首次使用后，可在系统设置中检查相关权限") {
+                    HStack {
+                        Button("麦克风") { openPrivacySettings("Privacy_Microphone") }
+                        Button("语音识别") { openPrivacySettings("Privacy_SpeechRecognition") }
+                        Button("屏幕与音频") { openPrivacySettings("Privacy_ScreenCapture") }
+                    }
+                }
+                HStack { Spacer(); Button("保存") { live.saveSettings() }.buttonStyle(.borderedProminent) }
+                    .padding(.top, 14)
+              }.padding(12)
+            }
+        }
+    }
+
+    private var liveCaptionEngineConfiguration: some View {
+        VStack(spacing: 10) {
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("与文本翻译共用引擎").fontWeight(.semibold)
+                    Text("开启后自动使用文本翻译的当前引擎；关闭后使用下方独立配置。")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                Spacer()
+                Toggle("", isOn: Binding(get: { state.liveCaptionEngineMode == .shared }, set: { enabled in
+                    if enabled { state.liveCaptionEngineMode = .shared }
+                    else if let first = state.addedLiveCaptionServices.first { state.setLiveCaptionServiceEnabled(first, enabled: true) }
+                    try? state.saveSettings()
+                })).labelsHidden().toggleStyle(.switch)
+            }.padding(12).background(Color.accentColor.opacity(0.1), in: RoundedRectangle(cornerRadius: 10))
+
+            if state.liveCaptionEngineMode != .shared {
+                HStack(alignment: .top, spacing: 14) {
+                    serviceList(entries: state.addedLiveCaptionServices, selectedID: $selectedLiveCaptionID,
+                        isEnabled: state.isLiveCaptionServiceEnabled, setEnabled: state.setLiveCaptionServiceEnabled,
+                        remove: state.removeLiveCaptionService, addMenu: AnyView(liveCaptionAddMenu), showCurrent: false)
+                    GroupBox { liveCaptionEngineDetail.padding(10) }
+                }.frame(height: 270)
+            }
+        }
+    }
+
+    private var liveCaptionAddMenu: some View {
+        Button { showsLiveCaptionEngines.toggle() } label: { Image(systemName: "plus") }
+            .buttonStyle(.plain)
+            .popover(isPresented: $showsLiveCaptionEngines) {
+                AddEngineGrid(entries: allTranslationEntries, existingIDs: Set(state.addedLiveCaptionServiceIDs)) { entry in
+                    state.addLiveCaptionService(entry); selectedLiveCaptionID = entry.id; showsLiveCaptionEngines = false
+                }
+            }
+    }
+
+    @ViewBuilder private var liveCaptionEngineDetail: some View {
+        if let entry = ServiceEntry.from(id: selectedLiveCaptionID) {
+            switch entry {
+            case .system:
+                VStack(alignment: .leading, spacing: 10) {
+                    header("Apple 系统翻译", "在本机完成实时字幕翻译，无需 API Key")
+                    Label("适合追求低延迟和隐私的实时字幕。", systemImage: "checkmark.shield")
+                    Spacer(); validationFooter
+                }
+            case .deepl:
+                VStack(alignment: .leading, spacing: 8) {
+                    header("DeepL 翻译", "实时字幕独立 DeepL 配置")
+                    SecureField("DeepL Authentication Key", text: Binding(get: { state.liveCaptionDeepLKey }, set: { state.liveCaptionDeepLKey = $0 }))
+                    Picker("API", selection: Binding(get: { state.deepLAPIType }, set: { state.deepLAPIType = $0 })) { ForEach(DeepLAPIType.allCases) { Text($0.rawValue).tag($0) } }
+                    Spacer(); validationFooter
+                }
+            case .ai(let preset):
+                VStack(alignment: .leading, spacing: 8) {
+                    header(preset.rawValue, "实时字幕独立 AI 配置")
+                    TextField("API 地址", text: Binding(get: { state.liveCaptionEndpoint }, set: { state.liveCaptionEndpoint = $0 }))
+                    SecureField("API Key", text: Binding(get: { state.liveCaptionAPIKey }, set: { state.liveCaptionAPIKey = $0 }))
+                    TextField("模型", text: Binding(get: { state.liveCaptionModel }, set: { state.liveCaptionModel = $0 }))
+                    Spacer(); validationFooter
+                }.onAppear { if state.liveCaptionAIPreset != preset { state.selectLiveCaptionAI(preset) } }
+            }
+        } else {
+            ContentUnavailableView("请选择实时字幕引擎", systemImage: "captions.bubble")
+        }
+    }
+
+    private var validationFooter: some View {
+        HStack {
+            Text(state.validationMessage).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+            Spacer()
+            Button("保存") { try? state.saveSettings() }
+            Button("验证") { Task { await state.validateLiveCaptionEngine() } }.buttonStyle(.borderedProminent)
+        }
+    }
+
+    private func openPrivacySettings(_ anchor: String) {
+        guard let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?\(anchor)") else { return }
+        NSWorkspace.shared.open(url)
+    }
+
+    private var runningApplications: [NSRunningApplication] {
+        NSWorkspace.shared.runningApplications
+            .filter { $0.activationPolicy == .regular && $0.bundleIdentifier != Bundle.main.bundleIdentifier && $0.bundleIdentifier != nil }
+            .sorted { ($0.localizedName ?? "") < ($1.localizedName ?? "") }
     }
 
     private var translationSettings: some View {

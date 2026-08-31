@@ -9,8 +9,8 @@ settings:
     GENERATE_INFOPLIST_FILE: YES
     INFOPLIST_KEY_CFBundleDisplayName: PallasOwl
     INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.productivity
-    MARKETING_VERSION: 0.8.3
-    CURRENT_PROJECT_VERSION: 83
+    MARKETING_VERSION: 0.9.1
+    CURRENT_PROJECT_VERSION: 91
 targets:
   PallasOwl:
     type: application
@@ -25,3 +25,5 @@ targets:
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
         ENABLE_HARDENED_RUNTIME: YES
         CODE_SIGN_ENTITLEMENTS: FlowTranslate/FlowTranslate.entitlements
+        INFOPLIST_KEY_NSMicrophoneUsageDescription: PallasOwl 需要使用麦克风进行实时语音转写和翻译。
+        INFOPLIST_KEY_NSSpeechRecognitionUsageDescription: PallasOwl 需要使用语音识别将实时声音转换为字幕。

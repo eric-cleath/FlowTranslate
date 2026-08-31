@@ -12,6 +12,7 @@ private final class SpeechObserver: NSObject, AVSpeechSynthesizerDelegate {
 @MainActor
 @Observable
 final class AppState {
+    let liveCaption = LiveCaptionModel()
     var mode: WorkMode = .translate
     var sourceLanguage = Language.supported[0]
     var targetLanguage = Language.supported[1]
@@ -52,6 +53,15 @@ final class AppState {
     var addedDocumentServiceIDs = UserDefaults.standard.stringArray(forKey: "addedDocumentServiceIDs") ?? []
     var enabledDocumentAIs: Set<String> = Set(UserDefaults.standard.stringArray(forKey: "enabledDocumentAIs") ?? [])
     var documentDeepLEnabled = UserDefaults.standard.object(forKey: "documentDeepLEnabled") as? Bool ?? false
+    var liveCaptionEngineMode = LiveCaptionEngineMode(rawValue: UserDefaults.standard.string(forKey: "liveCaptionEngineMode") ?? "") ?? .shared
+    var liveCaptionAIPreset = AIProviderPreset(rawValue: UserDefaults.standard.string(forKey: "liveCaptionAIPreset") ?? "") ?? .openAI
+    var liveCaptionEndpoint = UserDefaults.standard.string(forKey: "liveCaptionEndpoint") ?? AIProviderPreset.openAI.endpoint
+    var liveCaptionModel = UserDefaults.standard.string(forKey: "liveCaptionModel") ?? AIProviderPreset.openAI.suggestedModel
+    var liveCaptionAPIKey = KeychainStore.read(account: "liveCaptionAPIKey")
+    var liveCaptionDeepLKey = KeychainStore.read(account: "liveCaptionDeepLKey")
+    var addedLiveCaptionServiceIDs = UserDefaults.standard.stringArray(forKey: "addedLiveCaptionServiceIDs") ?? [ServiceEntry.system.id]
+    var enabledLiveCaptionAIs: Set<String> = Set(UserDefaults.standard.stringArray(forKey: "enabledLiveCaptionAIs") ?? [])
+    var liveCaptionDeepLEnabled = UserDefaults.standard.object(forKey: "liveCaptionDeepLEnabled") as? Bool ?? false
     var appLanguage = AppLanguage(rawValue: UserDefaults.standard.string(forKey: "appLanguage") ?? "") ?? .system
     var deepLAPIKey = KeychainStore.read(account: "deepLAPIKey")
     var deepLAPIType = DeepLAPIType(rawValue: UserDefaults.standard.string(forKey: "deepLAPIType") ?? "") ?? .free
@@ -284,6 +294,13 @@ final class AppState {
         UserDefaults.standard.set(addedDocumentServiceIDs, forKey: "addedDocumentServiceIDs")
         UserDefaults.standard.set(Array(enabledDocumentAIs), forKey: "enabledDocumentAIs")
         UserDefaults.standard.set(documentDeepLEnabled, forKey: "documentDeepLEnabled")
+        UserDefaults.standard.set(liveCaptionEngineMode.rawValue, forKey: "liveCaptionEngineMode")
+        UserDefaults.standard.set(liveCaptionAIPreset.rawValue, forKey: "liveCaptionAIPreset")
+        UserDefaults.standard.set(liveCaptionEndpoint, forKey: "liveCaptionEndpoint")
+        UserDefaults.standard.set(liveCaptionModel, forKey: "liveCaptionModel")
+        UserDefaults.standard.set(addedLiveCaptionServiceIDs, forKey: "addedLiveCaptionServiceIDs")
+        UserDefaults.standard.set(Array(enabledLiveCaptionAIs), forKey: "enabledLiveCaptionAIs")
+        UserDefaults.standard.set(liveCaptionDeepLEnabled, forKey: "liveCaptionDeepLEnabled")
         UserDefaults.standard.set(appLanguage.rawValue, forKey: "appLanguage")
         UserDefaults.standard.set(Array(enabledTranslationAIs), forKey: "enabledTranslationAIs")
         UserDefaults.standard.set(editorFontSize, forKey: "editorFontSize")
@@ -295,8 +312,11 @@ final class AppState {
         if !writingAPIKey.isEmpty { try KeychainStore.save(writingAPIKey, account: "writingAPIKey") }
         if !deepLAPIKey.isEmpty { try KeychainStore.save(deepLAPIKey, account: "deepLAPIKey") }
         if !documentAPIKey.isEmpty { try KeychainStore.save(documentAPIKey, account: "documentAPIKey") }
+        if !liveCaptionAPIKey.isEmpty { try KeychainStore.save(liveCaptionAPIKey, account: "liveCaptionAPIKey") }
+        if !liveCaptionDeepLKey.isEmpty { try KeychainStore.save(liveCaptionDeepLKey, account: "liveCaptionDeepLKey") }
         try saveTranslationAIProfile(translationAIPreset)
         try saveWritingAIProfile(writingAIPreset)
+        try saveLiveCaptionAIProfile(liveCaptionAIPreset)
     }
 
     func selectTranslationProvider(_ provider: TranslationProvider) {
@@ -557,6 +577,8 @@ final class AppState {
         if writingAPIKey.isEmpty { writingAPIKey = readSecret("writingAPIKey") }
         if deepLAPIKey.isEmpty { deepLAPIKey = readSecret("deepLAPIKey") }
         if documentAPIKey.isEmpty { documentAPIKey = readSecret("documentAPIKey") }
+        if liveCaptionAPIKey.isEmpty { liveCaptionAPIKey = readSecret("liveCaptionAPIKey.\(profileSuffix(liveCaptionAIPreset))") }
+        if liveCaptionDeepLKey.isEmpty { liveCaptionDeepLKey = readSecret("liveCaptionDeepLKey") }
     }
 
     func reloadSecretsAfterUnlock() {
@@ -602,6 +624,98 @@ final class AppState {
         guard let url = URL(string: endpoint), !model.isEmpty, !key.isEmpty else { throw ServiceError.invalidConfiguration }
         return try await service.perform(text: text, mode: .translate, source: source, target: target,
                                          configuration: .init(endpoint: url, apiKey: key, model: model))
+    }
+
+    func translateLiveCaption(_ text: String, source: Language, target: Language) async throws -> String {
+        if liveCaptionEngineMode == .shared { return try await translateUsingCurrentTextEngine(text, source: source, target: target) }
+        if liveCaptionEngineMode == .system { return try await systemTranslationService.translate(text: text, source: source, target: target) }
+        if liveCaptionEngineMode == .deepl {
+            guard liveCaptionDeepLEnabled, !liveCaptionDeepLKey.isEmpty else { throw ServiceError.invalidConfiguration }
+            return try await deepLService.translate(text: text, target: target, apiKey: liveCaptionDeepLKey, apiType: deepLAPIType, formality: deepLFormality)
+        }
+        let key = liveCaptionAPIKey.isEmpty && liveCaptionAIPreset == .ollama ? "ollama" : liveCaptionAPIKey
+        guard enabledLiveCaptionAIs.contains(liveCaptionAIPreset.rawValue), let url = URL(string: liveCaptionEndpoint), !liveCaptionModel.isEmpty, !key.isEmpty else { throw ServiceError.invalidConfiguration }
+        return try await service.perform(text: text, mode: .translate, source: source, target: target,
+                                         configuration: .init(endpoint: url, apiKey: key, model: liveCaptionModel))
+    }
+
+    private func translateUsingCurrentTextEngine(_ text: String, source: Language, target: Language) async throws -> String {
+        guard let provider = resolvedTranslationProvider() else { throw ServiceError.invalidConfiguration }
+        if provider == .system { return try await systemTranslationService.translate(text: text, source: source, target: target) }
+        if provider == .deepl { return try await deepLService.translate(text: text, target: target, apiKey: deepLAPIKey, apiType: deepLAPIType, formality: deepLFormality) }
+        let key = translationAPIKey.isEmpty && translationAIPreset == .ollama ? "ollama" : translationAPIKey
+        guard let url = URL(string: translationEndpoint), !translationModel.isEmpty, !key.isEmpty else { throw ServiceError.invalidConfiguration }
+        return try await service.perform(text: text, mode: .translate, source: source, target: target,
+                                         configuration: .init(endpoint: url, apiKey: key, model: translationModel))
+    }
+
+    var addedLiveCaptionServices: [ServiceEntry] { addedLiveCaptionServiceIDs.compactMap(ServiceEntry.from(id:)) }
+
+    func addLiveCaptionService(_ entry: ServiceEntry) {
+        guard !addedLiveCaptionServiceIDs.contains(entry.id) else { return }
+        addedLiveCaptionServiceIDs.append(entry.id); setLiveCaptionServiceEnabled(entry, enabled: true)
+    }
+
+    func removeLiveCaptionService(_ entry: ServiceEntry) {
+        addedLiveCaptionServiceIDs.removeAll { $0 == entry.id }
+        if case .ai(let preset) = entry { enabledLiveCaptionAIs.remove(preset.rawValue) }
+        if case .deepl = entry { liveCaptionDeepLEnabled = false }
+        if case .system = entry, liveCaptionEngineMode == .system { liveCaptionEngineMode = .shared }
+        try? saveSettings()
+    }
+
+    func isLiveCaptionServiceEnabled(_ entry: ServiceEntry) -> Bool {
+        switch entry { case .system: liveCaptionEngineMode == .system; case .ai(let preset): liveCaptionEngineMode == .ai && enabledLiveCaptionAIs.contains(preset.rawValue); case .deepl: liveCaptionEngineMode == .deepl && liveCaptionDeepLEnabled }
+    }
+
+    func setLiveCaptionServiceEnabled(_ entry: ServiceEntry, enabled: Bool) {
+        let wasEnabled = isLiveCaptionServiceEnabled(entry)
+        if enabled {
+            enabledLiveCaptionAIs.removeAll(); liveCaptionDeepLEnabled = false
+            switch entry {
+            case .system: liveCaptionEngineMode = .system
+            case .deepl: liveCaptionEngineMode = .deepl; liveCaptionDeepLEnabled = true
+            case .ai(let preset): liveCaptionEngineMode = .ai; enabledLiveCaptionAIs = [preset.rawValue]; selectLiveCaptionAI(preset)
+            }
+        } else {
+            if case .ai(let preset) = entry { enabledLiveCaptionAIs.remove(preset.rawValue) }
+            if case .deepl = entry { liveCaptionDeepLEnabled = false }
+            if wasEnabled { liveCaptionEngineMode = .shared }
+        }
+        try? saveSettings()
+    }
+
+    func selectLiveCaptionAI(_ preset: AIProviderPreset) {
+        try? saveLiveCaptionAIProfile(liveCaptionAIPreset)
+        liveCaptionAIPreset = preset
+        let suffix = profileSuffix(preset)
+        liveCaptionEndpoint = UserDefaults.standard.string(forKey: "liveCaptionEndpoint.\(suffix)") ?? preset.endpoint
+        liveCaptionModel = UserDefaults.standard.string(forKey: "liveCaptionModel.\(suffix)") ?? preset.suggestedModel
+        liveCaptionAPIKey = KeychainStore.read(account: "liveCaptionAPIKey.\(suffix)")
+        try? saveSettings()
+    }
+
+    func saveLiveCaptionAIProfile(_ preset: AIProviderPreset) throws {
+        let suffix = profileSuffix(preset)
+        UserDefaults.standard.set(liveCaptionEndpoint, forKey: "liveCaptionEndpoint.\(suffix)")
+        UserDefaults.standard.set(liveCaptionModel, forKey: "liveCaptionModel.\(suffix)")
+        if !liveCaptionAPIKey.isEmpty { try KeychainStore.save(liveCaptionAPIKey, account: "liveCaptionAPIKey.\(suffix)") }
+    }
+
+    func validateLiveCaptionEngine() async {
+        isValidating = true; validationMessage = "正在验证…"
+        do {
+            switch liveCaptionEngineMode {
+            case .shared: validationMessage = "验证成功：将使用文本翻译当前引擎"
+            case .system: validationMessage = "验证成功：Apple 系统翻译无需 API Key"
+            case .deepl: validationMessage = try await deepLService.validate(apiKey: liveCaptionDeepLKey, apiType: deepLAPIType)
+            case .ai:
+                let key = liveCaptionAPIKey.isEmpty && liveCaptionAIPreset == .ollama ? "ollama" : liveCaptionAPIKey
+                guard let url = URL(string: liveCaptionEndpoint) else { throw ServiceError.invalidConfiguration }
+                validationMessage = try await service.validate(configuration: .init(endpoint: url, apiKey: key, model: liveCaptionModel))
+            }
+        } catch { validationMessage = "验证失败：\(error.localizedDescription)" }
+        isValidating = false
     }
 
     var documentCurrentServiceName: String {
@@ -840,6 +954,8 @@ final class AppState {
             if force || writingAPIKey.isEmpty, let value = readSecretPreservingFailure(writingAccount), !value.isEmpty { writingAPIKey = value }
             if force || deepLAPIKey.isEmpty, let value = readSecretPreservingFailure("deepLAPIKey"), !value.isEmpty { deepLAPIKey = value }
             if force || documentAPIKey.isEmpty, let value = readSecretPreservingFailure("documentAPIKey"), !value.isEmpty { documentAPIKey = value }
+            if force || liveCaptionAPIKey.isEmpty, let value = readSecretPreservingFailure("liveCaptionAPIKey.\(profileSuffix(liveCaptionAIPreset))"), !value.isEmpty { liveCaptionAPIKey = value }
+            if force || liveCaptionDeepLKey.isEmpty, let value = readSecretPreservingFailure("liveCaptionDeepLKey"), !value.isEmpty { liveCaptionDeepLKey = value }
             if keychainIssue == nil { return }
         }
     }

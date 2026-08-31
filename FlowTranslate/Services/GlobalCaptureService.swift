@@ -10,6 +10,8 @@ final class GlobalCaptureService {
     var onSelection: ((String) -> Void)?
     var onScreenshot: ((String) -> Void)?
     var onCrossLanguageWriting: ((String) -> Void)?
+    var onOpenLiveCaption: (() -> Void)?
+    var onToggleLiveCaption: (() -> Void)?
     var onError: ((String) -> Void)?
     private var refs: [EventHotKeyRef?] = []
     private var progressPanel: NSPanel?
@@ -32,7 +34,7 @@ final class GlobalCaptureService {
     func reloadShortcuts(_ shortcuts: [ShortcutAction: ShortcutConfig]) {
         for ref in refs { if let ref { UnregisterEventHotKey(ref) } }
         refs.removeAll()
-        let actions: [(ShortcutAction, UInt32)] = [(.input, 1), (.selection, 2), (.screenshot, 3), (.crossWriting, 4)]
+        let actions: [(ShortcutAction, UInt32)] = [(.input, 1), (.selection, 2), (.screenshot, 3), (.crossWriting, 4), (.openLiveCaption, 5), (.toggleLiveCaption, 6)]
         for (action, id) in actions {
             let config = shortcuts[action] ?? .defaultValue(for: action)
             register(id: id, key: keyCode(for: config.letter), modifiers: carbonModifiers(for: config))
@@ -233,6 +235,8 @@ final class GlobalCaptureService {
         if id == 2 { captureSelection() }
         if id == 3 { captureScreenshot() }
         if id == 4 { captureForCrossLanguageWriting() }
+        if id == 5 { onOpenLiveCaption?() }
+        if id == 6 { onToggleLiveCaption?() }
     }
 
     private func postCommandC() {

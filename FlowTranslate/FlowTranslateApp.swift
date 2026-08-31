@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 @main
@@ -43,7 +44,26 @@ private struct MenuBarContent: View {
         Button("划词翻译  \(shortcut(.selection))") { GlobalCaptureService.shared.captureSelection() }
         Button("截图翻译  \(shortcut(.screenshot))") { GlobalCaptureService.shared.captureScreenshot() }
         Button("跨语写作并替换  \(shortcut(.crossWriting))") { GlobalCaptureService.shared.captureForCrossLanguageWriting() }
+        Menu("实时字幕音频源") {
+            audioSourceButton(.microphone)
+            audioSourceButton(.allApplications)
+            Divider()
+            ForEach(runningApplications, id: \.bundleIdentifier) { app in
+                Button {
+                    state.liveCaption.audioSource = .application
+                    state.liveCaption.selectedApplicationBundleID = app.bundleIdentifier ?? ""
+                    state.liveCaption.selectedApplicationName = app.localizedName ?? ""
+                    state.liveCaption.saveSettings()
+                } label: {
+                    if state.liveCaption.audioSource == .application && state.liveCaption.selectedApplicationBundleID == app.bundleIdentifier {
+                        Label(app.localizedName ?? "应用", systemImage: "checkmark")
+                    } else { Text(app.localizedName ?? "应用") }
+                }
+            }
+        }
         Button("文档翻译…") { openWindow(id: "document-translation") }
+        Button("打开实时字幕  \(shortcut(.openLiveCaption))") { showLiveCaptions() }
+        Button("开始/停止实时字幕  \(shortcut(.toggleLiveCaption))") { toggleLiveCaptions() }
         Button("历史记录") { openWindow(id: "history") }
         Divider()
         Button("设置…") { openSettings() }
@@ -56,6 +76,35 @@ private struct MenuBarContent: View {
     private func showInput(_ text: String) {
         state.prepareInput(text)
         openWindow(id: "translator")
+    }
+
+    private func showLiveCaptions() {
+        UserDefaults.standard.set(true, forKey: "openLiveCaptionMode")
+        openWindow(id: "translator")
+    }
+
+    private func toggleLiveCaptions() {
+        if state.liveCaption.isRunning { state.liveCaption.stop(); return }
+        state.liveCaption.translateHandler = { text, source, target in
+            try await state.translateLiveCaption(text, source: source, target: target)
+        }
+        Task { await state.liveCaption.start() }
+    }
+
+    @ViewBuilder private func audioSourceButton(_ source: LiveAudioSource) -> some View {
+        Button {
+            state.liveCaption.audioSource = source
+            state.liveCaption.saveSettings()
+        } label: {
+            if state.liveCaption.audioSource == source { Label(source.rawValue, systemImage: "checkmark") }
+            else { Text(source.rawValue) }
+        }
+    }
+
+    private var runningApplications: [NSRunningApplication] {
+        NSWorkspace.shared.runningApplications
+            .filter { $0.activationPolicy == .regular && $0.bundleIdentifier != Bundle.main.bundleIdentifier && $0.bundleIdentifier != nil }
+            .sorted { ($0.localizedName ?? "") < ($1.localizedName ?? "") }
     }
 
 

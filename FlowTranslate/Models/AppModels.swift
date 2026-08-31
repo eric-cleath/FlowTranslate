@@ -22,9 +22,11 @@ enum ShortcutAction: String, CaseIterable, Identifiable, Codable {
     case selection = "划词翻译"
     case screenshot = "截图翻译"
     case crossWriting = "跨语写作并替换"
+    case openLiveCaption = "打开实时字幕"
+    case toggleLiveCaption = "开始/停止实时字幕"
     var id: Self { self }
     var defaultLetter: String {
-        switch self { case .input: "A"; case .selection: "D"; case .screenshot: "S"; case .crossWriting: "W" }
+        switch self { case .input: "A"; case .selection: "D"; case .screenshot: "S"; case .crossWriting: "W"; case .openLiveCaption: "L"; case .toggleLiveCaption: "R" }
     }
 }
 
@@ -255,6 +257,29 @@ enum DocumentExportFormat: String, CaseIterable, Identifiable {
     case plainText = "纯文本"
     var id: Self { self }
     var fileExtension: String { self == .markdown ? "md" : "txt" }
+}
+
+enum LiveAudioSource: String, CaseIterable, Identifiable {
+    case microphone = "麦克风"
+    case allApplications = "全部应用"
+    case application = "指定应用"
+    var id: Self { self }
+    var icon: String { self == .microphone ? "mic.fill" : (self == .application ? "app.fill" : "speaker.wave.2.fill") }
+}
+
+enum LiveCaptionEngineMode: String, CaseIterable, Identifiable {
+    case shared = "与文本翻译共用引擎"
+    case system = "Apple 系统翻译"
+    case ai = "独立 AI 引擎"
+    case deepl = "独立 DeepL"
+    var id: Self { self }
+}
+
+enum LiveCaptionDisplayMode: String, CaseIterable, Identifiable {
+    case bilingual = "原文与译文"
+    case sourceOnly = "仅原文"
+    case translationOnly = "仅译文"
+    var id: Self { self }
 }
 
 struct DocumentTranslationSection: Identifiable, Sendable {

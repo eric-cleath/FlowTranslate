@@ -5,23 +5,28 @@ struct TranslatorView: View {
     @Environment(\.openWindow) private var openWindow
     @Environment(\.openSettings) private var openSettings
     @State private var showsDocumentMode = false
+    @State private var showsLiveCaptionMode = false
 
     var body: some View {
         @Bindable var state = state
         VStack(spacing: 0) {
-            Picker("模式", selection: Binding(get: { showsDocumentMode ? "__document" : state.mode.rawValue }, set: { value in
-                if value == "__document" { if !showsDocumentMode { state.clearWorkspace() }; showsDocumentMode = true }
-                else if let mode = WorkMode(rawValue: value) { showsDocumentMode = false; state.switchMode(to: mode) }
+            Picker("模式", selection: Binding(get: { showsLiveCaptionMode ? "__live" : (showsDocumentMode ? "__document" : state.mode.rawValue) }, set: { value in
+                if value == "__document" { if !showsDocumentMode { state.clearWorkspace() }; showsLiveCaptionMode = false; showsDocumentMode = true }
+                else if value == "__live" { state.clearWorkspace(); showsDocumentMode = false; showsLiveCaptionMode = true }
+                else if let mode = WorkMode(rawValue: value) { showsDocumentMode = false; showsLiveCaptionMode = false; state.switchMode(to: mode) }
             })) {
                 ForEach(WorkMode.allCases.filter { $0 != .summarize }) { mode in
                     Label(LocalizedStringKey(mode.rawValue), systemImage: mode.systemIcon).tag(mode.rawValue)
                 }
                 Label("文档", systemImage: "doc.text").tag("__document")
+                Label("实时字幕", systemImage: "captions.bubble").tag("__live")
             }
             .pickerStyle(.segmented)
             .padding()
 
-            if showsDocumentMode {
+            if showsLiveCaptionMode {
+                LiveCaptionView()
+            } else if showsDocumentMode {
                 DocumentTranslationView(embedded: true)
             } else {
 
@@ -89,7 +94,14 @@ struct TranslatorView: View {
             }
         }
         .frame(minWidth: 760, minHeight: 520)
-        .onAppear { bindGlobalShortcuts() }
+        .onAppear {
+            bindGlobalShortcuts()
+            if UserDefaults.standard.bool(forKey: "openLiveCaptionMode") {
+                UserDefaults.standard.removeObject(forKey: "openLiveCaptionMode")
+                showsDocumentMode = false
+                showsLiveCaptionMode = true
+            }
+        }
         .onChange(of: state.input) { _, value in
             if value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 state.output = ""; state.translationSummary = ""; state.errorMessage = nil; state.summaryError = nil
@@ -128,6 +140,8 @@ struct TranslatorView: View {
                 }
             }
         }
+        capture.onOpenLiveCaption = { showLiveCaption(start: false) }
+        capture.onToggleLiveCaption = { showLiveCaption(start: true) }
         capture.onError = {
             state.prepareInput("", activate: false)
             state.errorMessage = $0
@@ -135,8 +149,26 @@ struct TranslatorView: View {
         }
     }
 
-    private func showTranslator(text: String?, autoTranslate: Bool) {
+    private func showLiveCaption(start: Bool) {
         showsDocumentMode = false
+        showsLiveCaptionMode = true
+        openWindow(id: "translator")
+        if start {
+            if state.liveCaption.isRunning { state.liveCaption.stop() }
+            else {
+                state.liveCaption.translateHandler = { text, source, target in
+                    try await state.translateLiveCaption(text, source: source, target: target)
+                }
+                Task { await state.liveCaption.start() }
+            }
+        }
+    }
+
+    private func showTranslator(text: String?, autoTranslate: Bool) {
+        state.liveCaption.stop()
+        showsDocumentMode = false
+        showsLiveCaptionMode = false
+        showsLiveCaptionMode = false
         if let text { state.prepareInput(text) }
         openWindow(id: "translator")
         NSApp.activate(ignoringOtherApps: true)

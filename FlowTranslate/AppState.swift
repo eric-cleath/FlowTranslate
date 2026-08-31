@@ -604,6 +604,26 @@ final class AppState {
                                          configuration: .init(endpoint: url, apiKey: key, model: model))
     }
 
+    var documentCurrentServiceName: String {
+        switch documentEngineMode {
+        case .shared:
+            switch translationProvider {
+            case .system: return "Apple 系统翻译"
+            case .deepl: return "DeepL 翻译"
+            case .ai: return translationAIPreset.rawValue
+            }
+        case .sharedWriting:
+            if !writingUsesTranslationEngine { return writingAIPreset.rawValue }
+            switch translationProvider {
+            case .system: return "Apple 系统翻译"
+            case .deepl: return "DeepL 翻译"
+            case .ai: return translationAIPreset.rawValue
+            }
+        case .ai: return documentAIPreset.rawValue
+        case .deepl: return "DeepL 翻译"
+        }
+    }
+
     func applyDocumentAIPreset(_ preset: AIProviderPreset) {
         try? saveDocumentAIProfile(documentAIPreset)
         documentAIPreset = preset

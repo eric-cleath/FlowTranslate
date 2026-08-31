@@ -1,4 +1,5 @@
 import AppKit
+import AVFoundation
 import SwiftUI
 
 private enum SettingsCategory: String, CaseIterable, Identifiable {
@@ -64,6 +65,7 @@ struct SettingsView: View {
     @State private var showsTranslationEngines = false
     @State private var showsWritingEngines = false
     @State private var showsDocumentEngines = false
+    @State private var showsVoicePicker = false
 
     var body: some View {
         VStack(spacing: 18) {
@@ -80,6 +82,7 @@ struct SettingsView: View {
             }.frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .padding(22).frame(minWidth: 860, minHeight: 610)
+        .sheet(isPresented: $showsVoicePicker) { VoicePickerSheet(isPresented: $showsVoicePicker) }
         .onAppear {
             if let requested = UserDefaults.standard.string(forKey: "requestedSettingsCategory"), let target = SettingsCategory(rawValue: requested) {
                 category = target
@@ -338,10 +341,12 @@ struct SettingsView: View {
                 settingRow("正文行距", "调整长段落的阅读间距") { slider(Binding(get: { state.editorLineSpacing }, set: { state.editorLineSpacing = $0 }), 2...10) }
                 settingRow("朗读语音", "来自 macOS 系统语音；自动模式会按文本语言选择") {
                     HStack {
-                        Picker("", selection: Binding(get: { state.selectedVoiceIdentifier }, set: { value in state.setSpeechVoice(value) })) {
-                            Text("自动选择").tag("")
-                            ForEach(state.availableVoices, id: \.identifier) { voice in Text("\(voice.name) · \(voice.language)").tag(voice.identifier) }
-                        }.labelsHidden().frame(width: 260)
+                        Button {
+                            showsVoicePicker = true
+                        } label: {
+                            Text(state.selectedVoiceIdentifier.isEmpty ? "自动选择" : (state.availableVoices.first { $0.identifier == state.selectedVoiceIdentifier }?.name ?? "选择语音"))
+                                .frame(width: 210, alignment: .leading)
+                        }
                         Button(state.isSpeaking ? "停止试听" : "试听") { state.toggleSpeechPreview() }
                     }
                 }
@@ -374,6 +379,72 @@ struct SettingsView: View {
     }
     private func shortcutBinding(_ action: ShortcutAction, _ keyPath: WritableKeyPath<ShortcutConfig, Bool>) -> Binding<Bool> { Binding(get: { (state.shortcuts[action] ?? .defaultValue(for: action))[keyPath: keyPath] }, set: { value in var next = state.shortcuts[action] ?? .defaultValue(for: action); next[keyPath: keyPath] = value; state.updateShortcut(action, next) }) }
     private var duplicateShortcuts: Bool { let values = ShortcutAction.allCases.compactMap { state.shortcuts[$0]?.display }; return Set(values).count != values.count }
+}
+
+private struct VoicePickerSheet: View {
+    @Environment(AppState.self) private var state
+    @Binding var isPresented: Bool
+    @State private var searchText = ""
+    @State private var language = "全部语言"
+
+    private var languages: [String] {
+        ["全部语言"] + Set(state.availableVoices.map(\.language)).sorted()
+    }
+
+    private var voices: [AVSpeechSynthesisVoice] {
+        state.availableVoices.filter { voice in
+            (language == "全部语言" || voice.language == language) &&
+            (searchText.isEmpty || voice.name.localizedCaseInsensitiveContains(searchText) || voice.language.localizedCaseInsensitiveContains(searchText))
+        }.sorted { left, right in
+            left.quality == right.quality ? (left.language, left.name) < (right.language, right.name) : left.quality.rawValue > right.quality.rawValue
+        }
+    }
+
+    var body: some View {
+        VStack(spacing: 12) {
+            HStack {
+                Text("选择朗读语音").font(.title2.bold())
+                Spacer()
+                Button("完成") { isPresented = false }.keyboardShortcut(.defaultAction)
+            }
+            HStack {
+                TextField("搜索名称或语言", text: $searchText).textFieldStyle(.roundedBorder)
+                Picker("语言", selection: $language) { ForEach(languages, id: \.self, content: Text.init) }.frame(width: 190)
+            }
+            Button {
+                state.setSpeechVoice("")
+            } label: {
+                HStack { Image(systemName: state.selectedVoiceIdentifier.isEmpty ? "checkmark.circle.fill" : "circle"); Text("自动选择（根据文本语言）"); Spacer() }
+            }.buttonStyle(.plain).padding(9).background(Color.accentColor.opacity(state.selectedVoiceIdentifier.isEmpty ? 0.12 : 0), in: RoundedRectangle(cornerRadius: 8))
+            List(voices, id: \.identifier) { voice in
+                HStack {
+                    Button { state.setSpeechVoice(voice.identifier) } label: {
+                        HStack {
+                            Image(systemName: state.selectedVoiceIdentifier == voice.identifier ? "checkmark.circle.fill" : "circle")
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(voice.name)
+                                Text("\(voice.language) · \(qualityName(voice.quality))").font(.caption).foregroundStyle(.secondary)
+                            }
+                        }
+                    }.buttonStyle(.plain)
+                    Spacer()
+                    Button(state.isSpeaking && state.selectedVoiceIdentifier == voice.identifier ? "停止" : "试听") {
+                        if state.selectedVoiceIdentifier != voice.identifier { state.setSpeechVoice(voice.identifier) }
+                        state.toggleSpeechPreview()
+                    }
+                }.padding(.vertical, 3)
+            }
+            Text("显示 \(voices.count) 个语音；更多语音可在 macOS 系统设置中下载。").font(.caption).foregroundStyle(.secondary)
+        }.padding(18).frame(width: 570, height: 560)
+    }
+
+    private func qualityName(_ quality: AVSpeechSynthesisVoiceQuality) -> String {
+        switch quality {
+        case .premium: "高级"
+        case .enhanced: "增强"
+        default: "标准"
+        }
+    }
 }
 
 private struct AIProfileEditor: View {

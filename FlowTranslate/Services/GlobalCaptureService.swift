@@ -64,13 +64,15 @@ final class GlobalCaptureService {
     }
 
     func beginCrossWritingProgress() {
-        let indicator = NSProgressIndicator(frame: NSRect(x: 14, y: 12, width: 18, height: 18))
-        indicator.style = .spinning
+        endCrossWritingProgress()
+        let indicator = NSProgressIndicator(frame: NSRect(x: 14, y: 12, width: 242, height: 8))
+        indicator.style = .bar
+        indicator.isIndeterminate = true
         indicator.startAnimation(nil)
         let label = NSTextField(labelWithString: "PallasOwl 正在处理…")
-        label.frame = NSRect(x: 42, y: 10, width: 128, height: 22)
+        label.frame = NSRect(x: 14, y: 29, width: 242, height: 20)
         let panel = NSPanel(
-            contentRect: NSRect(x: NSEvent.mouseLocation.x + 14, y: NSEvent.mouseLocation.y - 48, width: 178, height: 42),
+            contentRect: NSRect(x: NSEvent.mouseLocation.x + 14, y: NSEvent.mouseLocation.y - 66, width: 270, height: 58),
             styleMask: [.borderless], backing: .buffered, defer: false
         )
         panel.isOpaque = false

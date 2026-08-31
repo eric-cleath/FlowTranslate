@@ -15,16 +15,14 @@ final class DocumentTranslationModel {
     var sourceText = ""
     var sections: [DocumentTranslationSection] = []
     var progress = 0.0
-    var status = "请选择要翻译的文档"
+    var status = ""
     var isWorking = false
     var activity = ""
     var errorMessage: String?
     @ObservationIgnored private var task: Task<Void, Never>?
 
     var resultText: String {
-        sections.map { section in
-            outputStyle == .translated ? section.translation : "原文\n\(section.source)\n\n译文\n\(section.translation)"
-        }.joined(separator: "\n\n---\n\n")
+        sections.map(\.translation).joined(separator: "\n\n---\n\n")
     }
 
     func chooseFile() {
@@ -34,7 +32,7 @@ final class DocumentTranslationModel {
         panel.canChooseDirectories = false
         if panel.runModal() == .OK, let url = panel.url {
             fileURL = url; pastedImage = nil; pastedImageName = ""; sourceText = ""; sections = []; progress = 0; errorMessage = nil
-            status = "文件载入成功"
+            status = ""
         }
     }
 
@@ -45,7 +43,7 @@ final class DocumentTranslationModel {
         }
         pastedImage = image; pastedImageName = "剪贴板图片"; fileURL = nil
         sourceText = ""; sections = []; progress = 0; errorMessage = nil
-        status = "图片粘贴成功"
+        status = ""
     }
 
     var displayName: String { fileURL?.lastPathComponent ?? pastedImageName }
@@ -109,6 +107,12 @@ final class DocumentTranslationModel {
 
     func cancel() { task?.cancel() }
 
+    func clearTranslationOutputIfSourceIsEmpty() {
+        guard sourceText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        if activity == "translate" { task?.cancel() }
+        sections = []; progress = 0; status = ""; errorMessage = nil
+    }
+
     func export() {
         guard !resultText.isEmpty else { return }
         let panel = NSSavePanel()
@@ -166,8 +170,6 @@ struct DocumentTranslationView: View {
                 Button { model.chooseFile() } label: { Label("选择文档", systemImage: "doc.badge.plus") }
                     .buttonStyle(.borderedProminent)
                 Button { model.pasteImage() } label: { Label("粘贴图片", systemImage: "photo.on.rectangle") }
-                Text(model.fileURL?.lastPathComponent ?? (model.pastedImageName.isEmpty ? "支持 PDF、Word、TXT、Markdown 和图片" : model.pastedImageName))
-                    .lineLimit(1).foregroundStyle(.secondary)
                 Spacer()
                 Picker("输出", selection: $model.outputStyle) { ForEach(DocumentOutputStyle.allCases) { Text($0.rawValue).tag($0) } }
                     .frame(width: 150)
@@ -178,7 +180,6 @@ struct DocumentTranslationView: View {
                 Image(systemName: "arrow.right")
                 Picker("译文", selection: $model.targetLanguage) { ForEach(Language.supported.filter { $0.code != "auto" }) { Text($0.name).tag($0) } }.labelsHidden()
                 Spacer()
-                Text("引擎：\(state.documentEngineMode.rawValue)").font(.caption).foregroundStyle(.secondary)
             }
             HSplitView {
                 sourcePane
@@ -189,11 +190,13 @@ struct DocumentTranslationView: View {
                     ProgressView(value: model.progress)
                     HStack { Text(model.status); Spacer(); Text("\(Int(model.progress * 100))%") }.font(.caption).foregroundStyle(.secondary)
                 }
-            } else { Text(model.status).font(.caption).foregroundStyle(.secondary) }
+            } else if !model.status.isEmpty { Text(model.status).font(.caption).foregroundStyle(.secondary) }
             if let error = model.errorMessage { Text(error).font(.callout).foregroundStyle(.red) }
             HStack {
                 Button { UserDefaults.standard.set("文档翻译", forKey: "requestedSettingsCategory"); openSettings() } label: { Image(systemName: "gearshape") }
                     .buttonStyle(.plain).help("打开文档翻译设置")
+                Text("· 当前服务：\(state.documentCurrentServiceName)")
+                    .font(.caption).foregroundStyle(.secondary)
                 if model.isWorking { Button("暂停", action: model.cancel) }
                 Spacer()
                 Picker("导出格式", selection: $model.exportFormat) { ForEach(DocumentExportFormat.allCases) { Text($0.rawValue).tag($0) } }.labelsHidden().frame(width: 160)
@@ -201,6 +204,9 @@ struct DocumentTranslationView: View {
                 Button("开始翻译") { model.translate(using: state) }.buttonStyle(.borderedProminent).disabled(model.sourceText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || model.isWorking)
             }
         }.padding(embedded ? 12 : 18).frame(minWidth: embedded ? 720 : 900, minHeight: embedded ? 440 : 620)
+        .onChange(of: model.sourceText) { _, value in
+            if value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { model.clearTranslationOutputIfSourceIsEmpty() }
+        }
     }
 
     private var filePreview: some View {
@@ -228,7 +234,7 @@ struct DocumentTranslationView: View {
             }
             HStack {
                 if !model.sourceText.isEmpty { Text("已提取 \(model.sourceText.count) 个字符").font(.caption).foregroundStyle(.secondary) }
-                else { Text(model.displayName.isEmpty ? "可直接输入文字" : "文件已就绪").font(.caption).foregroundStyle(.secondary) }
+                else if model.displayName.isEmpty { Text("可直接输入文字").font(.caption).foregroundStyle(.secondary) }
                 Spacer()
                 Button("提取文字") { model.extractText() }.disabled((model.fileURL == nil && model.pastedImage == nil) || model.isWorking)
             }.padding(.horizontal, 10).padding(.vertical, 7).background(.background.secondary.opacity(0.65), in: RoundedRectangle(cornerRadius: 8))

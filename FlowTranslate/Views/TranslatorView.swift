@@ -96,14 +96,12 @@ struct TranslatorView: View {
         .frame(minWidth: 760, minHeight: 520)
         .onAppear {
             bindGlobalShortcuts()
-            state.liveCaption.setHostWindowVisible(true)
             if UserDefaults.standard.bool(forKey: "openLiveCaptionMode") {
                 UserDefaults.standard.removeObject(forKey: "openLiveCaptionMode")
                 showsDocumentMode = false
                 showsLiveCaptionMode = true
             }
         }
-        .onDisappear { state.liveCaption.setHostWindowVisible(false) }
         .onChange(of: state.input) { _, value in
             if value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 state.output = ""; state.translationSummary = ""; state.errorMessage = nil; state.summaryError = nil
@@ -173,7 +171,6 @@ struct TranslatorView: View {
     }
 
     private func showTranslator(text: String?, autoTranslate: Bool) {
-        state.liveCaption.stop()
         showsDocumentMode = false
         showsLiveCaptionMode = false
         showsLiveCaptionMode = false

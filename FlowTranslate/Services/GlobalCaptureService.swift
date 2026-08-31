@@ -19,6 +19,7 @@ final class GlobalCaptureService {
     private var progressSessionID: UUID?
     private var progressStartedAt: Date?
     private var selectionMonitor: Any?
+    private var instantEscapeMonitor: Any?
     private var instantSelectionText = ""
     private var lastInstantSelectionDate = Date.distantPast
     private var instantSelectionPoint = CGPoint.zero
@@ -26,6 +27,7 @@ final class GlobalCaptureService {
     private var instantResultPanel: NSPanel?
     private var instantResultLabel: NSTextField?
     private var instantActionTarget: InstantSelectionActionTarget?
+    private var instantCloseTarget: InstantSelectionActionTarget?
     private init() {}
 
     func start() {
@@ -43,10 +45,15 @@ final class GlobalCaptureService {
 
     func configureInstantSelection(enabled: Bool) {
         if let selectionMonitor { NSEvent.removeMonitor(selectionMonitor); self.selectionMonitor = nil }
+        if let instantEscapeMonitor { NSEvent.removeMonitor(instantEscapeMonitor); self.instantEscapeMonitor = nil }
         hideInstantSelectionPanels()
         guard enabled else { return }
         selectionMonitor = NSEvent.addGlobalMonitorForEvents(matching: .leftMouseUp) { [weak self] event in
             Task { @MainActor in self?.handlePossibleInstantSelection(at: NSEvent.mouseLocation) }
+        }
+        instantEscapeMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard event.keyCode == 53 else { return }
+            Task { @MainActor in self?.hideInstantSelectionPanels() }
         }
     }
 
@@ -147,6 +154,13 @@ final class GlobalCaptureService {
 
     private func handlePossibleInstantSelection(at point: CGPoint) {
         guard NSWorkspace.shared.frontmostApplication?.bundleIdentifier != Bundle.main.bundleIdentifier else { return }
+        if let panel = instantResultPanel, !panel.frame.contains(point) {
+            hideInstantSelectionPanels()
+            return
+        }
+        if let panel = instantIconPanel, !panel.frame.contains(point) {
+            hideInstantSelectionPanels()
+        }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) { [weak self] in
             guard let self else { return }
             if let text = self.accessibilitySelectedText(), !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -217,12 +231,25 @@ final class GlobalCaptureService {
         let panel = makeInstantPanel(frame: NSRect(origin: panelOrigin(near: instantSelectionPoint, size: size), size: size))
         let label = NSTextField(wrappingLabelWithString: "正在翻译…")
         label.font = .systemFont(ofSize: 15)
-        label.frame = NSRect(x: 18, y: 18, width: 404, height: 134)
+        label.frame = NSRect(x: 18, y: 18, width: 378, height: 134)
         label.maximumNumberOfLines = 7
+        let closeTarget = InstantSelectionActionTarget { [weak self] in self?.hideInstantSelectionPanels() }
+        let closeButton = NSButton(title: "×", target: closeTarget, action: #selector(InstantSelectionActionTarget.trigger))
+        closeButton.bezelStyle = .circular
+        closeButton.font = .systemFont(ofSize: 16, weight: .medium)
+        closeButton.frame = NSRect(x: 402, y: 132, width: 26, height: 26)
+        closeButton.toolTip = "关闭"
         panel.contentView?.addSubview(label)
+        panel.contentView?.addSubview(closeButton)
         panel.orderFrontRegardless()
         instantResultPanel = panel
         instantResultLabel = label
+        instantCloseTarget = closeTarget
+        let panelID = ObjectIdentifier(panel)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 20) { [weak self] in
+            guard let self, let current = self.instantResultPanel, ObjectIdentifier(current) == panelID else { return }
+            self.hideInstantSelectionPanels()
+        }
         guard let onInstantSelection else { label.stringValue = "选中即译尚未就绪。"; return }
         onInstantSelection(instantSelectionText) { [weak self] result in
             Task { @MainActor in
@@ -248,7 +275,7 @@ final class GlobalCaptureService {
 
     private func hideInstantSelectionPanels() {
         instantIconPanel?.orderOut(nil); instantResultPanel?.orderOut(nil)
-        instantIconPanel = nil; instantResultPanel = nil; instantResultLabel = nil; instantActionTarget = nil
+        instantIconPanel = nil; instantResultPanel = nil; instantResultLabel = nil; instantActionTarget = nil; instantCloseTarget = nil
     }
 
     func captureScreenshot() {

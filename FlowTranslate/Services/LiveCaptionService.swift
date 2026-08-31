@@ -4,6 +4,7 @@ import NaturalLanguage
 import ScreenCaptureKit
 import Speech
 import SwiftUI
+import UniformTypeIdentifiers
 
 // TCC invokes these authorization callbacks on its own background queue. Keep
 // the callback closures outside MainActor isolation so Swift 6 does not trap
@@ -33,6 +34,8 @@ final class LiveCaptionModel {
     var selectedApplicationBundleID = UserDefaults.standard.string(forKey: "liveApplicationBundleID") ?? ""
     var selectedApplicationName = UserDefaults.standard.string(forKey: "liveApplicationName") ?? ""
     var displayMode = LiveCaptionDisplayMode(rawValue: UserDefaults.standard.string(forKey: "liveDisplayMode") ?? "") ?? .bilingual
+    var outputStyle = DocumentOutputStyle(rawValue: UserDefaults.standard.string(forKey: "liveOutputStyle") ?? "") ?? .translated
+    var exportFormat = DocumentExportFormat(rawValue: UserDefaults.standard.string(forKey: "liveExportFormat") ?? "") ?? .markdown
     var skipTranslationForTargetLanguage = UserDefaults.standard.object(forKey: "liveSkipTargetLanguage") as? Bool ?? true
     var showsFloatingWindow = UserDefaults.standard.object(forKey: "liveShowsFloatingWindow") as? Bool ?? true
     var captionFontSize = UserDefaults.standard.object(forKey: "liveCaptionFontSize") as? Double ?? 24
@@ -64,6 +67,7 @@ final class LiveCaptionModel {
                 Task { @MainActor in self?.receive(text, isFinal: isFinal) }
             }
             isRunning = true
+            updateHostWindowLevel()
             status = audioSource == .microphone ? "正在聆听麦克风…" : (audioSource == .application ? "正在聆听 \(selectedApplicationName.isEmpty ? "指定应用" : selectedApplicationName)…" : "正在聆听全部应用…")
             if showsFloatingWindow && !hostWindowVisible { LiveCaptionPanelController.shared.show(model: self) }
         } catch {
@@ -77,6 +81,7 @@ final class LiveCaptionModel {
         capture.stop()
         isRunning = false
         status = sourceText.isEmpty ? "已停止" : "转写已停止"
+        updateHostWindowLevel()
         LiveCaptionPanelController.shared.hide()
     }
 
@@ -89,6 +94,7 @@ final class LiveCaptionModel {
 
     func setHostWindowVisible(_ visible: Bool) {
         hostWindowVisible = visible
+        updateHostWindowLevel()
         guard isRunning, showsFloatingWindow else {
             if visible { LiveCaptionPanelController.shared.hide() }
             return
@@ -104,9 +110,86 @@ final class LiveCaptionModel {
         UserDefaults.standard.set(selectedApplicationBundleID, forKey: "liveApplicationBundleID")
         UserDefaults.standard.set(selectedApplicationName, forKey: "liveApplicationName")
         UserDefaults.standard.set(displayMode.rawValue, forKey: "liveDisplayMode")
+        UserDefaults.standard.set(outputStyle.rawValue, forKey: "liveOutputStyle")
+        UserDefaults.standard.set(exportFormat.rawValue, forKey: "liveExportFormat")
         UserDefaults.standard.set(skipTranslationForTargetLanguage, forKey: "liveSkipTargetLanguage")
         UserDefaults.standard.set(showsFloatingWindow, forKey: "liveShowsFloatingWindow")
         UserDefaults.standard.set(captionFontSize, forKey: "liveCaptionFontSize")
+    }
+
+    func export() {
+        let text = exportText()
+        guard !text.isEmpty else { return }
+        saveSettings()
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [exportFormat == .markdown ? .init(filenameExtension: "md")! : .plainText]
+        panel.nameFieldStringValue = "PallasOwl-实时字幕-\(fileDate()).\(exportFormat.fileExtension)"
+        if panel.runModal() == .OK, let url = panel.url {
+            do {
+                try text.write(to: url, atomically: true, encoding: .utf8)
+                status = "字幕记录已导出"
+            } catch {
+                errorMessage = "导出失败：\(error.localizedDescription)"
+            }
+        }
+    }
+
+    private func exportText() -> String {
+        let source = sourceText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let translation = translatedText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if outputStyle == .translated {
+            guard !translation.isEmpty else { return "" }
+            if exportFormat == .plainText { return translation }
+            return markdownFrontmatter() + "# 实时字幕译文\n\n\(translation)\n"
+        }
+        guard !source.isEmpty || !translation.isEmpty else { return "" }
+        if exportFormat == .plainText {
+            return "原文\n\(source)\n\n译文\n\(translation)"
+        }
+        return markdownFrontmatter() + """
+        # 实时字幕记录
+
+        <table style="width:100%; table-layout:fixed;">
+        <colgroup><col style="width:50%;"><col style="width:50%;"></colgroup>
+        <thead><tr><th>原文</th><th>译文</th></tr></thead>
+        <tbody><tr><td>\(htmlCell(source))</td><td>\(htmlCell(translation))</td></tr></tbody>
+        </table>
+
+        """
+    }
+
+    private func markdownFrontmatter() -> String {
+        """
+        ---
+        title: "PallasOwl 实时字幕"
+        created_at: "\(ISO8601DateFormatter().string(from: Date()))"
+        source_language: "\(sourceLanguage.name)"
+        target_language: "\(targetLanguage.name)"
+        output_style: "\(outputStyle.rawValue)"
+        tags:
+          - PallasOwl
+          - 实时字幕
+        ---
+
+        """
+    }
+
+    private func htmlCell(_ text: String) -> String {
+        text.replacingOccurrences(of: "&", with: "&amp;")
+            .replacingOccurrences(of: "<", with: "&lt;")
+            .replacingOccurrences(of: ">", with: "&gt;")
+            .replacingOccurrences(of: "\n", with: "<br>")
+    }
+
+    private func fileDate() -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyyMMdd-HHmm"
+        return formatter.string(from: Date())
+    }
+
+    private func updateHostWindowLevel() {
+        let window = NSApp.windows.first { $0.title == "PallasOwl Translator" }
+        window?.level = isRunning && hostWindowVisible ? .floating : .normal
     }
 
     private func receive(_ text: String, isFinal: Bool) {

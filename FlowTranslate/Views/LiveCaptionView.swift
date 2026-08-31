@@ -18,6 +18,9 @@ struct LiveCaptionView: View {
                 languagePicker("输入语言", selection: $model.sourceLanguage, allowsAuto: true)
                 Image(systemName: "arrow.right")
                 languagePicker("目标语言", selection: $model.targetLanguage, allowsAuto: false)
+                Picker("输出", selection: $model.outputStyle) {
+                    ForEach(DocumentOutputStyle.allCases) { Text($0.rawValue).tag($0) }
+                }.frame(width: 145)
                 Spacer()
                 Button(model.isRunning ? "停止字幕" : "开始字幕") {
                     if model.isRunning { model.stop() }
@@ -47,11 +50,17 @@ struct LiveCaptionView: View {
                 Text(model.status).foregroundStyle(.secondary)
                 if !model.detectedLanguageName.isEmpty { Text("· 检测语言：\(model.detectedLanguageName)").foregroundStyle(.secondary) }
                 Spacer()
+                Picker("导出格式", selection: $model.exportFormat) {
+                    ForEach(DocumentExportFormat.allCases) { Text($0.rawValue).tag($0) }
+                }.labelsHidden().frame(width: 160)
+                Button("导出结果") { model.export() }
+                    .disabled(model.outputStyle == .translated ? model.translatedText.isEmpty : (model.sourceText.isEmpty && model.translatedText.isEmpty))
                 Button("清空记录") { model.clear() }.disabled(model.sourceText.isEmpty && model.translatedText.isEmpty)
             }.font(.caption)
         }
         .padding(.horizontal).padding(.bottom)
-        .onDisappear { if model.isRunning { model.stop() } }
+        .onAppear { model.setHostWindowVisible(true) }
+        .onDisappear { model.setHostWindowVisible(false) }
     }
 
     private func applicationPicker(model: LiveCaptionModel) -> some View {

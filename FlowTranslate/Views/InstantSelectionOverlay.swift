@@ -159,7 +159,15 @@ struct InstantSelectionCardView: View {
         .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous)
             .stroke(Color.primary.opacity(0.12), lineWidth: 1))
         .shadow(color: .black.opacity(0.22), radius: 18, y: 8)
-        .onHover { model.isHovered = $0 }
+        .onHover { hovered in
+            model.isHovered = hovered
+            guard !hovered else { return }
+            // A short grace period prevents accidental dismissal while the pointer
+            // crosses the rounded edge, but closes the card once it has truly left.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
+                if !model.isHovered { model.close?() }
+            }
+        }
     }
 
     private var bodyFontSize: CGFloat {

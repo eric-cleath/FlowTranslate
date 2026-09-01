@@ -181,10 +181,9 @@ final class MediaProcessingModel {
 struct MediaProcessingView: View {
     @Environment(AppState.self) private var state
     @Environment(\.openSettings) private var openSettings
-    @State private var model = MediaProcessingModel()
 
     var body: some View {
-        @Bindable var model = model
+        @Bindable var model = state.mediaProcessing
         VStack(spacing: 12) {
             HStack {
                 Button { model.chooseFile() } label: { Label("选择媒体", systemImage: "film.stack") }.buttonStyle(.borderedProminent)
@@ -233,7 +232,8 @@ struct MediaProcessingView: View {
     }
 
     private var mediaCard: some View {
-        HStack(spacing: 14) {
+        let model = state.mediaProcessing
+        return HStack(spacing: 14) {
             Image(systemName: model.fileURL == nil ? "play.rectangle.on.rectangle" : "film.fill")
                 .font(.system(size: 30)).foregroundStyle(.blue).frame(width: 68, height: 58)
                 .background(.background.secondary, in: RoundedRectangle(cornerRadius: 10))

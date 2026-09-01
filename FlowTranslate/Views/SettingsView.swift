@@ -518,9 +518,6 @@ struct SettingsView: View {
                         Button(state.isSpeaking ? "停止试听" : "试听") { state.toggleSpeechPreview() }
                     }
                 }
-                settingRow("联系我们", "问题反馈与建议") {
-                    Link("pallasowl2026@gmail.com", destination: URL(string: "mailto:pallasowl2026@gmail.com")!)
-                }
                 Spacer()
             }.padding(12)
         }
@@ -538,6 +535,21 @@ struct SettingsView: View {
                     Text("Version \(appVersion) (\(buildNumber))")
                         .font(.callout.monospacedDigit()).foregroundStyle(.secondary)
                 }
+                Divider()
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("功能使用次数").font(.headline)
+                    LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], alignment: .leading, spacing: 8) {
+                        ForEach(UsageMetric.allCases) { metric in
+                            HStack {
+                                Text(metric.title).foregroundStyle(.secondary)
+                                Spacer()
+                                Text("\(UsageMetrics.count(metric)) 次").monospacedDigit()
+                            }
+                        }
+                    }
+                    Text("仅保存在本机，不记录或上传处理内容。")
+                        .font(.caption).foregroundStyle(.tertiary)
+                }.frame(maxWidth: 520)
                 Divider()
                 VStack(spacing: 12) {
                     Link(destination: URL(string: "mailto:pallasowl2026@gmail.com")!) {

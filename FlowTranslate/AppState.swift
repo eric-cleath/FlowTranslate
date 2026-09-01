@@ -120,6 +120,7 @@ final class AppState {
             do {
                 let result = try await deepLService.translate(text: cleaned, target: targetLanguage, apiKey: deepLAPIKey, apiType: deepLAPIType, formality: deepLFormality)
                 output = result
+                UsageMetrics.increment(mode)
                 history.insert(.init(mode: mode, source: cleaned, result: result, sourceLanguage: sourceLanguage, targetLanguage: targetLanguage), at: 0)
                 saveHistory()
             } catch { errorMessage = error.localizedDescription }
@@ -131,6 +132,7 @@ final class AppState {
             do {
                 let result = try await systemTranslationService.translate(text: cleaned, source: sourceLanguage, target: targetLanguage)
                 output = result
+                UsageMetrics.increment(mode)
                 history.insert(.init(mode: mode, source: cleaned, result: result, sourceLanguage: sourceLanguage, targetLanguage: targetLanguage), at: 0)
                 saveHistory()
             } catch { errorMessage = error.localizedDescription }
@@ -166,6 +168,7 @@ final class AppState {
                 configuration: .init(endpoint: url, apiKey: apiKey, model: model)
             )
             output = result
+            UsageMetrics.increment(mode)
             history.insert(.init(mode: mode, source: cleaned, result: result, sourceLanguage: effectiveSource, targetLanguage: effectiveTarget), at: 0)
             if history.count > 200 { history.removeLast(history.count - 200) }
             saveHistory()

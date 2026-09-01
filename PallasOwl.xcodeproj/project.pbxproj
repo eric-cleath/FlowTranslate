@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		15C22BDD98CB651A148D6E75 /* UsageMetrics.swift in Sources */ = {isa = PBXBuildFile; fileRef = 32D92C63D2F13166455F83F0 /* UsageMetrics.swift */; };
 		239AF5E941189A61FA7AE978 /* HistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67ECB73A1BA36479C069ED2E /* HistoryView.swift */; };
 		276470F5891E9644D62A9ACF /* AIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4476162E968427A9F9C45DB4 /* AIService.swift */; };
 		2DDB9399ED50C175E37E28D5 /* DeepLService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B045E82AFCB858888E6972C0 /* DeepLService.swift */; };
@@ -33,6 +34,7 @@
 		0FAD48AE98EE235B79927354 /* PallasOwl.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PallasOwl.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		2DBB0E84107DB8666701B7A8 /* GlobalCaptureService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlobalCaptureService.swift; sourceTree = "<group>"; };
 		3021665D840B37AC8CFD03D8 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		32D92C63D2F13166455F83F0 /* UsageMetrics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageMetrics.swift; sourceTree = "<group>"; };
 		3DB06CA9F0D10D55913C965F /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/Localizable.strings; sourceTree = "<group>"; };
 		3EA6EDC2EE90B70022B1D15D /* LiveCaptionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveCaptionView.swift; sourceTree = "<group>"; };
 		42E57471DADCEF83A2CF1771 /* AppModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModels.swift; sourceTree = "<group>"; };
@@ -95,6 +97,7 @@
 			isa = PBXGroup;
 			children = (
 				7BD591C449BC3048933927EF /* KeychainStore.swift */,
+				32D92C63D2F13166455F83F0 /* UsageMetrics.swift */,
 			);
 			path = Utilities;
 			sourceTree = "<group>";
@@ -220,6 +223,7 @@
 				761D674818BF78AFEA977603 /* SettingsView.swift in Sources */,
 				4C73B6A573977418C6ED08E2 /* SystemTranslationService.swift in Sources */,
 				FE83E8ADCE7C1EEE6D21E7FD /* TranslatorView.swift in Sources */,
+				15C22BDD98CB651A148D6E75 /* UsageMetrics.swift in Sources */,
 				85DB869AB1C1890B4BB540AB /* WiktionaryService.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

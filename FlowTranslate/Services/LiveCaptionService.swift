@@ -67,6 +67,7 @@ final class LiveCaptionModel {
                 Task { @MainActor in self?.receive(text, isFinal: isFinal) }
             }
             isRunning = true
+            UsageMetrics.increment(.liveCaption)
             updateHostWindowLevel()
             status = audioSource == .microphone ? "正在聆听麦克风…" : (audioSource == .application ? "正在聆听 \(selectedApplicationName.isEmpty ? "指定应用" : selectedApplicationName)…" : "正在聆听全部应用…")
             if showsFloatingWindow && !hostWindowVisible { LiveCaptionPanelController.shared.show(model: self) }

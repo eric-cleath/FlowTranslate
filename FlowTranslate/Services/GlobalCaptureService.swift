@@ -75,7 +75,7 @@ final class GlobalCaptureService {
     }
 
     func captureSelection() {
-        captureSelectedText(restoreClipboard: true, completion: { self.onSelection?($0) })
+        captureSelectedText(restoreClipboard: true, completion: { UsageMetrics.increment(.selectionTranslation); self.onSelection?($0) })
     }
 
     func captureForCrossLanguageWriting() {
@@ -267,10 +267,13 @@ final class GlobalCaptureService {
         onInstantSelection(instantSelectionText) { [weak self] result in
             Task { @MainActor in
                 guard let self else { return }
-                let translation = (try? result.get()) ?? "翻译失败，请检查当前翻译引擎。"
+                let successfulTranslation = try? result.get()
+                let translation = successfulTranslation ?? "翻译失败，请检查当前翻译引擎。"
+                if successfulTranslation != nil { UsageMetrics.increment(.instantSelection) }
                 self.instantResultLabel?.stringValue = translation
                 guard dictionaryCandidate else { return }
                 if let entry = try? await WiktionaryService().lookup(self.instantSelectionText) {
+                    UsageMetrics.increment(.dictionaryLookup)
                     var details = "\n\n词典 · \(entry.language) · \(entry.partOfSpeech)\n\(entry.definition)"
                     if let example = entry.example, !example.isEmpty { details += "\n例句：\(example)" }
                     self.instantResultLabel?.stringValue = translation + details + "\n来源：Wiktionary"
@@ -325,7 +328,7 @@ final class GlobalCaptureService {
                 let text = Self.mergeRecognizedLines(observations)
                 Task { @MainActor in
                     if text.isEmpty { self.onError?("截图中没有识别到文字。") }
-                    else { self.onScreenshot?(text) }
+                    else { UsageMetrics.increment(.screenshotTranslation); self.onScreenshot?(text) }
                 }
             }
             request.recognitionLevel = .accurate

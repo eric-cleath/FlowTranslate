@@ -71,6 +71,7 @@ final class DocumentTranslationModel {
                     }
                 } else { throw DocumentImportError.unreadable }
                 sourceText = extracted
+                UsageMetrics.increment(.documentExtraction)
                 progress = 1; status = "文字提取完成，请检查内容后决定是否翻译"; isWorking = false; activity = ""
             } catch is CancellationError {
                 status = "已停止提取"; isWorking = false; activity = ""
@@ -103,6 +104,7 @@ final class DocumentTranslationModel {
                     }
                     sections.append(.init(source: chunk, translation: translated))
                 }
+                UsageMetrics.increment(.documentTranslation)
                 progress = 1; status = "翻译完成"; isWorking = false; activity = ""
             } catch is CancellationError {
                 status = "已暂停"; isWorking = false; activity = ""

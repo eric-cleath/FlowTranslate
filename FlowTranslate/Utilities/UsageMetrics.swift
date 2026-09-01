@@ -3,6 +3,7 @@ import Foundation
 enum UsageMetric: String, CaseIterable, Identifiable {
     case translation, polish, crossWriting, documentExtraction, documentTranslation
     case liveCaption, selectionTranslation, screenshotTranslation, instantSelection, dictionaryLookup
+    case mediaTranscription, mediaTranslation, mediaSummary
     var id: String { rawValue }
     var title: String {
         switch self {
@@ -16,6 +17,9 @@ enum UsageMetric: String, CaseIterable, Identifiable {
         case .screenshotTranslation: "截图翻译"
         case .instantSelection: "选中即译"
         case .dictionaryLookup: "词典查询"
+        case .mediaTranscription: "媒体转写"
+        case .mediaTranslation: "媒体翻译"
+        case .mediaSummary: "媒体摘要"
         }
     }
 }

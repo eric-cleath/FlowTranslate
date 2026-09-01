@@ -11,6 +11,7 @@
 		239AF5E941189A61FA7AE978 /* HistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67ECB73A1BA36479C069ED2E /* HistoryView.swift */; };
 		276470F5891E9644D62A9ACF /* AIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4476162E968427A9F9C45DB4 /* AIService.swift */; };
 		2DDB9399ED50C175E37E28D5 /* DeepLService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B045E82AFCB858888E6972C0 /* DeepLService.swift */; };
+		396A2D368656A5BDAF23ECA6 /* MediaProcessingService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8438A08502ABF3F3153C8F47 /* MediaProcessingService.swift */; };
 		3AAA94FBA85169ADE3B88252 /* LiveCaptionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = C53626090981AB6770D213A1 /* LiveCaptionService.swift */; };
 		4C73B6A573977418C6ED08E2 /* SystemTranslationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9D0445760535A61469ACEE6 /* SystemTranslationService.swift */; };
 		625C2E6BCD0C1CC2BDB44928 /* KeychainStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7BD591C449BC3048933927EF /* KeychainStore.swift */; };
@@ -27,6 +28,7 @@
 		DD0F7F162D9F20EA614480C2 /* AppModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 42E57471DADCEF83A2CF1771 /* AppModels.swift */; };
 		E685E0A83878FA050152C511 /* MenuBarIcon.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B8BFEE544E3974157C95D03 /* MenuBarIcon.swift */; };
 		EDB947A4B595F0314AB7CA52 /* DocumentImportService.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6EE74CA4DDB7EA475A0CC39 /* DocumentImportService.swift */; };
+		F64028046798091D4E60B634 /* MediaProcessingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6FA179FA7F9AE404E8645CD /* MediaProcessingView.swift */; };
 		FE83E8ADCE7C1EEE6D21E7FD /* TranslatorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FDFFA7A52213F6C782D60E0A /* TranslatorView.swift */; };
 /* End PBXBuildFile section */
 
@@ -45,6 +47,7 @@
 		7529570319D3AC17571FCC25 /* FlowTranslateApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlowTranslateApp.swift; sourceTree = "<group>"; };
 		7B8BFEE544E3974157C95D03 /* MenuBarIcon.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarIcon.swift; sourceTree = "<group>"; };
 		7BD591C449BC3048933927EF /* KeychainStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainStore.swift; sourceTree = "<group>"; };
+		8438A08502ABF3F3153C8F47 /* MediaProcessingService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaProcessingService.swift; sourceTree = "<group>"; };
 		851D21A6B9F04A6425915EEF /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
 		8AAC683D6E02194B7630B19C /* FlowTranslate.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = FlowTranslate.entitlements; sourceTree = "<group>"; };
 		A3DD7C0CB5E4FA53C181340D /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
@@ -53,6 +56,7 @@
 		C53626090981AB6770D213A1 /* LiveCaptionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveCaptionService.swift; sourceTree = "<group>"; };
 		DDEB3F67A48110BE0C2C3458 /* InstantSelectionOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InstantSelectionOverlay.swift; sourceTree = "<group>"; };
 		E6EE74CA4DDB7EA475A0CC39 /* DocumentImportService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentImportService.swift; sourceTree = "<group>"; };
+		E6FA179FA7F9AE404E8645CD /* MediaProcessingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaProcessingView.swift; sourceTree = "<group>"; };
 		E73CB586F459EE84D6339493 /* WiktionaryService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WiktionaryService.swift; sourceTree = "<group>"; };
 		F9D0445760535A61469ACEE6 /* SystemTranslationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemTranslationService.swift; sourceTree = "<group>"; };
 		FC5220473A6D0067E052B7C5 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/Localizable.strings"; sourceTree = "<group>"; };
@@ -69,6 +73,7 @@
 				E6EE74CA4DDB7EA475A0CC39 /* DocumentImportService.swift */,
 				2DBB0E84107DB8666701B7A8 /* GlobalCaptureService.swift */,
 				C53626090981AB6770D213A1 /* LiveCaptionService.swift */,
+				8438A08502ABF3F3153C8F47 /* MediaProcessingService.swift */,
 				F9D0445760535A61469ACEE6 /* SystemTranslationService.swift */,
 				E73CB586F459EE84D6339493 /* WiktionaryService.swift */,
 			);
@@ -90,6 +95,7 @@
 				67ECB73A1BA36479C069ED2E /* HistoryView.swift */,
 				DDEB3F67A48110BE0C2C3458 /* InstantSelectionOverlay.swift */,
 				3EA6EDC2EE90B70022B1D15D /* LiveCaptionView.swift */,
+				E6FA179FA7F9AE404E8645CD /* MediaProcessingView.swift */,
 				61569C4B3102CDAB3173F5A2 /* SettingsView.swift */,
 				FDFFA7A52213F6C782D60E0A /* TranslatorView.swift */,
 			);
@@ -223,6 +229,8 @@
 				625C2E6BCD0C1CC2BDB44928 /* KeychainStore.swift in Sources */,
 				3AAA94FBA85169ADE3B88252 /* LiveCaptionService.swift in Sources */,
 				9D1F3C3AE7C550A57BFAA9BB /* LiveCaptionView.swift in Sources */,
+				396A2D368656A5BDAF23ECA6 /* MediaProcessingService.swift in Sources */,
+				F64028046798091D4E60B634 /* MediaProcessingView.swift in Sources */,
 				E685E0A83878FA050152C511 /* MenuBarIcon.swift in Sources */,
 				761D674818BF78AFEA977603 /* SettingsView.swift in Sources */,
 				4C73B6A573977418C6ED08E2 /* SystemTranslationService.swift in Sources */,
@@ -307,7 +315,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 113;
+				CURRENT_PROJECT_VERSION = 120;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
@@ -329,7 +337,7 @@
 				INFOPLIST_KEY_CFBundleDisplayName = "PallasOwl Translator";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 0.11.3;
+				MARKETING_VERSION = 0.12.0;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
@@ -399,7 +407,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 113;
+				CURRENT_PROJECT_VERSION = 120;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -415,7 +423,7 @@
 				INFOPLIST_KEY_CFBundleDisplayName = "PallasOwl Translator";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 0.11.3;
+				MARKETING_VERSION = 0.12.0;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";

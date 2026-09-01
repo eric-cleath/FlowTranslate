@@ -6,19 +6,23 @@ struct TranslatorView: View {
     @Environment(\.openSettings) private var openSettings
     @State private var showsDocumentMode = false
     @State private var showsLiveCaptionMode = false
+    @State private var showsMediaMode = false
 
     var body: some View {
         @Bindable var state = state
         VStack(spacing: 0) {
-            ModeNavigationBar(selection: Binding(get: { showsLiveCaptionMode ? "__live" : (showsDocumentMode ? "__document" : state.mode.rawValue) }, set: { value in
-                if value == "__document" { if !showsDocumentMode { state.clearWorkspace() }; showsLiveCaptionMode = false; showsDocumentMode = true }
-                else if value == "__live" { state.clearWorkspace(); showsDocumentMode = false; showsLiveCaptionMode = true }
-                else if let mode = WorkMode(rawValue: value) { showsDocumentMode = false; showsLiveCaptionMode = false; state.switchMode(to: mode) }
+            ModeNavigationBar(selection: Binding(get: { showsMediaMode ? "__media" : (showsLiveCaptionMode ? "__live" : (showsDocumentMode ? "__document" : state.mode.rawValue)) }, set: { value in
+                if value == "__document" { if !showsDocumentMode { state.clearWorkspace() }; showsLiveCaptionMode = false; showsMediaMode = false; showsDocumentMode = true }
+                else if value == "__live" { state.clearWorkspace(); showsDocumentMode = false; showsMediaMode = false; showsLiveCaptionMode = true }
+                else if value == "__media" { state.clearWorkspace(); showsDocumentMode = false; showsLiveCaptionMode = false; showsMediaMode = true }
+                else if let mode = WorkMode(rawValue: value) { showsDocumentMode = false; showsLiveCaptionMode = false; showsMediaMode = false; state.switchMode(to: mode) }
             }))
             .padding(.horizontal).padding(.vertical, 12)
 
             if showsLiveCaptionMode {
                 LiveCaptionView()
+            } else if showsMediaMode {
+                MediaProcessingView()
             } else if showsDocumentMode {
                 DocumentTranslationView(embedded: true)
             } else {
@@ -99,6 +103,7 @@ struct TranslatorView: View {
             if UserDefaults.standard.bool(forKey: "openLiveCaptionMode") {
                 UserDefaults.standard.removeObject(forKey: "openLiveCaptionMode")
                 showsDocumentMode = false
+                showsMediaMode = false
                 showsLiveCaptionMode = true
             }
         }
@@ -130,6 +135,7 @@ struct TranslatorView: View {
         capture.onScreenshot = { showTranslator(text: $0, autoTranslate: true) }
         capture.onCrossLanguageWriting = { text in
             showsDocumentMode = false
+            showsMediaMode = false
             state.prepareInput(text, mode: .crossLanguageWriting, activate: false)
             capture.beginCrossWritingProgress()
             Task {
@@ -162,6 +168,7 @@ struct TranslatorView: View {
 
     private func showLiveCaption(start: Bool) {
         showsDocumentMode = false
+        showsMediaMode = false
         showsLiveCaptionMode = true
         openWindow(id: "translator")
         if start {
@@ -178,7 +185,7 @@ struct TranslatorView: View {
     private func showTranslator(text: String?, autoTranslate: Bool) {
         showsDocumentMode = false
         showsLiveCaptionMode = false
-        showsLiveCaptionMode = false
+        showsMediaMode = false
         if let text { state.prepareInput(text) }
         openWindow(id: "translator")
         NSApp.activate(ignoringOtherApps: true)
@@ -248,7 +255,8 @@ private struct ModeNavigationBar: View {
         .init(id: WorkMode.polish.rawValue, title: WorkMode.polish.rawValue, icon: WorkMode.polish.systemIcon),
         .init(id: WorkMode.crossLanguageWriting.rawValue, title: WorkMode.crossLanguageWriting.rawValue, icon: WorkMode.crossLanguageWriting.systemIcon),
         .init(id: "__document", title: "文档", icon: "doc.text"),
-        .init(id: "__live", title: "实时字幕", icon: "captions.bubble")
+        .init(id: "__live", title: "实时字幕", icon: "captions.bubble"),
+        .init(id: "__media", title: "媒体", icon: "film.stack")
     ]
 
     var body: some View {

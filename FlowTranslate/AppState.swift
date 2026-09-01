@@ -221,6 +221,23 @@ final class AppState {
         isSummarizing = false
     }
 
+    func summarizeMediaText(_ text: String, target: Language) async throws -> String {
+        await reloadSecretsWithRetry(scope: writingUsesTranslationEngine ? .translation : .writing)
+        let sharesTranslationAI = writingUsesTranslationEngine
+        if sharesTranslationAI && resolvedTranslationProvider() != .ai { throw ServiceError.invalidConfiguration }
+        if !sharesTranslationAI && (!writingEnabled || !enabledWritingAIs.contains(writingAIPreset.rawValue)) {
+            throw ServiceError.invalidConfiguration
+        }
+        let endpoint = sharesTranslationAI ? translationEndpoint : writingEndpoint
+        let preset = sharesTranslationAI ? translationAIPreset : writingAIPreset
+        let storedKey = sharesTranslationAI ? translationAPIKey : writingAPIKey
+        let model = sharesTranslationAI ? translationModel : writingModel
+        let key = storedKey.isEmpty && preset == .ollama ? "ollama" : storedKey
+        guard let url = URL(string: endpoint), !key.isEmpty, !model.isEmpty else { throw ServiceError.invalidConfiguration }
+        return try await service.perform(text: text, mode: .summarize, source: target, target: target,
+                                         configuration: .init(endpoint: url, apiKey: key, model: model))
+    }
+
     func copyOutput() {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(output, forType: .string)

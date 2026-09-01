@@ -3,7 +3,7 @@ import AVFoundation
 import SwiftUI
 
 private enum SettingsCategory: String, CaseIterable, Identifiable {
-    case general = "通用设置", translation = "文本翻译", writing = "AI 文本处理", document = "文档翻译", liveCaption = "实时字幕", shortcuts = "快捷键", about = "关于"
+    case general = "通用设置", translation = "文本翻译", writing = "AI 文本处理", document = "文档翻译", liveCaption = "实时字幕", media = "媒体处理", shortcuts = "快捷键", about = "关于"
     var id: Self { self }
 }
 
@@ -70,11 +70,14 @@ struct SettingsView: View {
     @State private var showsVoicePicker = false
     @AppStorage("instantSelectionEnabled") private var instantSelectionEnabled = false
     @AppStorage("instantSelectionAutomatic") private var instantSelectionAutomatic = false
+    @AppStorage("mediaWhisperPath") private var mediaWhisperPath = "/opt/homebrew/bin/whisper"
+    @AppStorage("mediaWhisperModel") private var mediaWhisperModel = "small"
+    @AppStorage("mediaPreferEmbeddedSubtitles") private var mediaPreferEmbeddedSubtitles = true
 
     var body: some View {
         VStack(spacing: 18) {
             Picker("设置分类", selection: $category) { ForEach(SettingsCategory.allCases) { Text(LocalizedStringKey($0.rawValue)).tag($0) } }
-                .pickerStyle(.segmented).frame(width: 760)
+                .pickerStyle(.segmented).frame(width: 850)
             Group {
                 switch category {
                 case .general: generalSettings
@@ -82,12 +85,13 @@ struct SettingsView: View {
                 case .writing: writingSettings
                 case .document: documentSettings
                 case .liveCaption: liveCaptionSettings
+                case .media: mediaSettings
                 case .shortcuts: shortcutSettings
                 case .about: aboutSettings
                 }
             }.frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .padding(22).frame(minWidth: 860, minHeight: 610)
+        .padding(22).frame(minWidth: 950, minHeight: 640)
         .sheet(isPresented: $showsVoicePicker) { VoicePickerSheet(isPresented: $showsVoicePicker) }
         .onAppear {
             if let requested = UserDefaults.standard.string(forKey: "requestedSettingsCategory"), let target = SettingsCategory(rawValue: requested) {
@@ -104,6 +108,53 @@ struct SettingsView: View {
             // Settings from the main window does not remain on the last page.
             category = .general
         }
+    }
+
+    private var mediaSettings: some View {
+        GroupBox {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    header("媒体处理", "提取视频字幕或使用本地 Whisper 转写，并可继续翻译、摘要和导出")
+                    Divider()
+                    settingRow("优先提取内嵌字幕", "视频已有字幕轨道时直接提取；没有字幕时再调用 Whisper") {
+                        Toggle("", isOn: $mediaPreferEmbeddedSubtitles).labelsHidden().toggleStyle(.switch)
+                    }
+                    VStack(alignment: .leading, spacing: 7) {
+                        Text("Whisper 程序位置").fontWeight(.medium)
+                        HStack {
+                            TextField("/opt/homebrew/bin/whisper", text: $mediaWhisperPath)
+                            Button("选择…") { chooseWhisperExecutable() }
+                        }
+                        HStack(spacing: 5) {
+                            Image(systemName: FileManager.default.isExecutableFile(atPath: NSString(string: mediaWhisperPath).expandingTildeInPath) ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                            Text(FileManager.default.isExecutableFile(atPath: NSString(string: mediaWhisperPath).expandingTildeInPath) ? "已找到可执行程序" : "当前路径不可用；请在安装 Whisper 后选择其命令文件")
+                        }.font(.caption).foregroundStyle(FileManager.default.isExecutableFile(atPath: NSString(string: mediaWhisperPath).expandingTildeInPath) ? .green : .orange)
+                    }.padding(.vertical, 14).overlay(alignment: .bottom) { Divider() }
+                    settingRow("Whisper 模型", "small 适合日常使用；模型越大通常越准确，但处理更慢") {
+                        Picker("", selection: $mediaWhisperModel) {
+                            ForEach(["tiny", "base", "small", "medium", "large-v3", "turbo"], id: \.self) { Text($0).tag($0) }
+                        }.labelsHidden().frame(width: 170)
+                    }
+                    settingRow("媒体翻译引擎", "首版与“文档翻译”的当前引擎配置共用") {
+                        Button("查看文档翻译设置") { category = .document }
+                    }
+                    settingRow("媒体摘要引擎", "首版与“AI 文本处理”的当前 AI 引擎配置共用") {
+                        Button("查看 AI 文本处理设置") { category = .writing }
+                    }
+                    settingRow("FFmpeg", "用于检测和提取视频内嵌字幕") {
+                        Label(FileManager.default.isExecutableFile(atPath: "/opt/homebrew/bin/ffmpeg") || FileManager.default.isExecutableFile(atPath: "/usr/local/bin/ffmpeg") ? "已安装" : "未检测到", systemImage: "gearshape.2")
+                            .foregroundStyle(.secondary)
+                    }
+                }.padding(.horizontal, 16)
+            }
+        }
+    }
+
+    private func chooseWhisperExecutable() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true; panel.canChooseDirectories = false; panel.allowsMultipleSelection = false
+        panel.message = "选择 Whisper 可执行程序"
+        if panel.runModal() == .OK, let url = panel.url { mediaWhisperPath = url.path }
     }
 
     private var liveCaptionSettings: some View {

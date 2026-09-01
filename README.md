@@ -1,6 +1,6 @@
 # PallasOwl
 
-PallasOwl（原 FlowTranslate）是一款原生 macOS 翻译与 AI 文本处理工具，面向输入翻译、全局划词、截图 OCR、润色、总结和跨语写作场景。
+PallasOwl（原 FlowTranslate）是一款原生 macOS 翻译与 AI 文本处理工具，面向输入翻译、全局划词、截图 OCR、润色、跨语写作、文档和媒体处理场景。
 
 ## 主要功能
 
@@ -26,11 +26,14 @@ PallasOwl（原 FlowTranslate）是一款原生 macOS 翻译与 AI 文本处理�
 - 实时字幕支持麦克风、全部应用或指定 App 声音，提供悬浮双语字幕
 - 实时字幕拥有独立翻译引擎配置，也可选择与文本翻译共用引擎
 - 可通过全局快捷键打开或直接开始/停止实时字幕
+- 媒体处理支持常见视频与音频文件，优先提取内嵌字幕，无字幕时可调用本地 Whisper 转写
+- 媒体转写后可分别执行翻译和摘要，并导出 Obsidian Markdown、TXT、SRT 或 WebVTT
 
 ## 系统要求
 
 - macOS 14 或更高版本
 - Apple Silicon Mac
+- 媒体内嵌字幕提取需要 FFmpeg；本地语音转写需要 Whisper（其他功能不受影响）
 - Xcode
 - [XcodeGen](https://github.com/yonaskolb/XcodeGen)
 

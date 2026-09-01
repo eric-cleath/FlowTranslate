@@ -23,6 +23,7 @@
 		8B38CC9E313A61C254D650FD /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = A8A8B40D97FEC5B67E1EAF27 /* Localizable.strings */; };
 		965D1984D26179E92CCDCC93 /* FlowTranslateApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7529570319D3AC17571FCC25 /* FlowTranslateApp.swift */; };
 		9D1F3C3AE7C550A57BFAA9BB /* LiveCaptionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3EA6EDC2EE90B70022B1D15D /* LiveCaptionView.swift */; };
+		BEFA53A01FC0A0E3DAC5A3DD /* InstantSelectionOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = DDEB3F67A48110BE0C2C3458 /* InstantSelectionOverlay.swift */; };
 		DD0F7F162D9F20EA614480C2 /* AppModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 42E57471DADCEF83A2CF1771 /* AppModels.swift */; };
 		E685E0A83878FA050152C511 /* MenuBarIcon.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B8BFEE544E3974157C95D03 /* MenuBarIcon.swift */; };
 		EDB947A4B595F0314AB7CA52 /* DocumentImportService.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6EE74CA4DDB7EA475A0CC39 /* DocumentImportService.swift */; };
@@ -50,6 +51,7 @@
 		B045E82AFCB858888E6972C0 /* DeepLService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeepLService.swift; sourceTree = "<group>"; };
 		BD7D675D5A8D9623F3216A03 /* ja */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ja; path = ja.lproj/Localizable.strings; sourceTree = "<group>"; };
 		C53626090981AB6770D213A1 /* LiveCaptionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveCaptionService.swift; sourceTree = "<group>"; };
+		DDEB3F67A48110BE0C2C3458 /* InstantSelectionOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InstantSelectionOverlay.swift; sourceTree = "<group>"; };
 		E6EE74CA4DDB7EA475A0CC39 /* DocumentImportService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentImportService.swift; sourceTree = "<group>"; };
 		E73CB586F459EE84D6339493 /* WiktionaryService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WiktionaryService.swift; sourceTree = "<group>"; };
 		F9D0445760535A61469ACEE6 /* SystemTranslationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemTranslationService.swift; sourceTree = "<group>"; };
@@ -86,6 +88,7 @@
 			children = (
 				FC9493BA0AA78C19CD6CAB44 /* DocumentTranslationView.swift */,
 				67ECB73A1BA36479C069ED2E /* HistoryView.swift */,
+				DDEB3F67A48110BE0C2C3458 /* InstantSelectionOverlay.swift */,
 				3EA6EDC2EE90B70022B1D15D /* LiveCaptionView.swift */,
 				61569C4B3102CDAB3173F5A2 /* SettingsView.swift */,
 				FDFFA7A52213F6C782D60E0A /* TranslatorView.swift */,
@@ -216,6 +219,7 @@
 				965D1984D26179E92CCDCC93 /* FlowTranslateApp.swift in Sources */,
 				69CC27349F2726D1905A9790 /* GlobalCaptureService.swift in Sources */,
 				239AF5E941189A61FA7AE978 /* HistoryView.swift in Sources */,
+				BEFA53A01FC0A0E3DAC5A3DD /* InstantSelectionOverlay.swift in Sources */,
 				625C2E6BCD0C1CC2BDB44928 /* KeychainStore.swift in Sources */,
 				3AAA94FBA85169ADE3B88252 /* LiveCaptionService.swift in Sources */,
 				9D1F3C3AE7C550A57BFAA9BB /* LiveCaptionView.swift in Sources */,
@@ -303,7 +307,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 110;
+				CURRENT_PROJECT_VERSION = 111;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
@@ -325,7 +329,7 @@
 				INFOPLIST_KEY_CFBundleDisplayName = "PallasOwl Translator";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 0.11.0;
+				MARKETING_VERSION = 0.11.1;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
@@ -395,7 +399,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 110;
+				CURRENT_PROJECT_VERSION = 111;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -411,7 +415,7 @@
 				INFOPLIST_KEY_CFBundleDisplayName = "PallasOwl Translator";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 0.11.0;
+				MARKETING_VERSION = 0.11.1;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";

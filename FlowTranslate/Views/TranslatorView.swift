@@ -157,6 +157,9 @@ struct TranslatorView: View {
                 catch { completion(.failure(error)) }
             }
         }
+        capture.onInstantLanguageDirection = { (state.sourceLanguage.name, state.targetLanguage.name) }
+        capture.onOpenInstantSelectionMain = { showTranslator(text: $0, autoTranslate: true) }
+        capture.onSpeakInstantSelection = { state.speak($0, language: state.targetLanguage) }
         capture.onError = {
             state.prepareInput("", activate: false)
             state.errorMessage = $0

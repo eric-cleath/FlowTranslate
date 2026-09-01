@@ -1,6 +1,7 @@
 import AppKit
 @preconcurrency import ApplicationServices
 import Carbon
+import SwiftUI
 import Vision
 
 @MainActor
@@ -13,6 +14,9 @@ final class GlobalCaptureService {
     var onOpenLiveCaption: (() -> Void)?
     var onToggleLiveCaption: (() -> Void)?
     var onInstantSelection: ((String, @escaping (Result<String, Error>) -> Void) -> Void)?
+    var onInstantLanguageDirection: (() -> (source: String, target: String))?
+    var onOpenInstantSelectionMain: ((String) -> Void)?
+    var onSpeakInstantSelection: ((String) -> Void)?
     var onError: ((String) -> Void)?
     private var refs: [EventHotKeyRef?] = []
     private var progressPanel: NSPanel?
@@ -25,11 +29,10 @@ final class GlobalCaptureService {
     private var instantSelectionPoint = CGPoint.zero
     private var instantIconPanel: NSPanel?
     private var instantResultPanel: NSPanel?
-    private var instantResultLabel: NSTextField?
+    private var instantCardModel: InstantSelectionCardModel?
     private var instantActionTarget: InstantSelectionActionTarget?
     private var instantCloseTarget: InstantSelectionActionTarget?
-    private var instantDictionaryTarget: InstantSelectionActionTarget?
-    private var instantDictionaryButton: NSButton?
+    private var instantDismissWorkItem: DispatchWorkItem?
     private init() {}
 
     func start() {
@@ -156,10 +159,7 @@ final class GlobalCaptureService {
 
     private func handlePossibleInstantSelection(at point: CGPoint) {
         guard NSWorkspace.shared.frontmostApplication?.bundleIdentifier != Bundle.main.bundleIdentifier else { return }
-        if let panel = instantResultPanel, !panel.frame.contains(point) {
-            hideInstantSelectionPanels()
-            return
-        }
+        if let panel = instantResultPanel, panel.frame.contains(point) { return }
         if let panel = instantIconPanel, !panel.frame.contains(point) {
             hideInstantSelectionPanels()
         }
@@ -169,7 +169,9 @@ final class GlobalCaptureService {
                 self.presentInstantSelection(text, at: point)
             } else {
                 self.captureSelectedTextSilently { [weak self] text in
-                    self?.presentInstantSelection(text, at: point)
+                    guard let self else { return }
+                    if text.isEmpty { self.hideInstantSelectionPanels() }
+                    else { self.presentInstantSelection(text, at: point) }
                 }
             }
         }
@@ -194,7 +196,7 @@ final class GlobalCaptureService {
         postCommandC()
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.22) {
             guard pasteboard.changeCount != previousChange,
-                  let text = pasteboard.string(forType: .string), !text.isEmpty else { return }
+                  let text = pasteboard.string(forType: .string), !text.isEmpty else { completion(""); return }
             completion(text)
             if let previousString {
                 pasteboard.clearContents()
@@ -216,71 +218,101 @@ final class GlobalCaptureService {
     private func showInstantTranslateIcon(at point: CGPoint) {
         hideInstantSelectionPanels()
         let target = InstantSelectionActionTarget { [weak self] in self?.beginInstantTranslation() }
-        let button = NSButton(title: "T", target: target, action: #selector(InstantSelectionActionTarget.trigger))
-        button.bezelStyle = NSButton.BezelStyle.texturedRounded
-        button.font = NSFont.boldSystemFont(ofSize: 15)
-        let panel = makeInstantPanel(frame: NSRect(origin: panelOrigin(near: point, size: NSSize(width: 38, height: 38)), size: NSSize(width: 38, height: 38)))
+        let button = InstantTranslateIconButton(image: MenuBarIcon.image, target: target, action: #selector(InstantSelectionActionTarget.trigger))
+        button.isBordered = false
+        button.imageScaling = .scaleProportionallyUpOrDown
+        button.toolTip = "翻译"
+        button.wantsLayer = true
+        button.layer?.cornerRadius = 9
+        button.layer?.borderWidth = 1
+        button.layer?.borderColor = NSColor.white.withAlphaComponent(0.55).cgColor
+        button.layer?.shadowColor = NSColor.black.cgColor
+        button.layer?.shadowOpacity = 0.28
+        button.layer?.shadowRadius = 4
+        button.layer?.shadowOffset = CGSize(width: 0, height: -2)
+        let iconSize = NSSize(width: 36, height: 36)
+        let panel = makeInstantPanel(frame: NSRect(origin: panelOrigin(near: point, size: iconSize), size: iconSize))
+        panel.backgroundColor = .clear
         panel.contentView = button
+        panel.alphaValue = 0
         panel.orderFrontRegardless()
+        panel.animator().alphaValue = 1
         instantActionTarget = target
         instantIconPanel = panel
     }
 
     private func beginInstantTranslation() {
         instantIconPanel?.orderOut(nil); instantIconPanel = nil
-        instantResultPanel?.orderOut(nil); instantResultPanel = nil; instantResultLabel = nil
         let dictionaryCandidate = isDictionaryCandidate(instantSelectionText)
-        let size = NSSize(width: 440, height: dictionaryCandidate ? 270 : 170)
-        let panel = makeInstantPanel(frame: NSRect(origin: panelOrigin(near: instantSelectionPoint, size: size), size: size))
-        let label = NSTextField(wrappingLabelWithString: "正在翻译…")
-        label.font = .systemFont(ofSize: 15)
-        label.frame = NSRect(x: 18, y: dictionaryCandidate ? 45 : 18, width: 378, height: dictionaryCandidate ? 205 : 134)
-        label.maximumNumberOfLines = dictionaryCandidate ? 12 : 7
-        let closeTarget = InstantSelectionActionTarget { [weak self] in self?.hideInstantSelectionPanels() }
-        let closeButton = NSButton(title: "×", target: closeTarget, action: #selector(InstantSelectionActionTarget.trigger))
-        closeButton.bezelStyle = .circular
-        closeButton.font = .systemFont(ofSize: 16, weight: .medium)
-        closeButton.frame = NSRect(x: 402, y: 132, width: 26, height: 26)
-        closeButton.toolTip = "关闭"
-        panel.contentView?.addSubview(label)
-        panel.contentView?.addSubview(closeButton)
-        if dictionaryCandidate, let url = WiktionaryService.pageURL(for: instantSelectionText) {
-            let dictionaryTarget = InstantSelectionActionTarget { NSWorkspace.shared.open(url) }
-            let dictionaryButton = NSButton(title: "在 Wiktionary 中查看", target: dictionaryTarget, action: #selector(InstantSelectionActionTarget.trigger))
-            dictionaryButton.bezelStyle = .inline
-            dictionaryButton.frame = NSRect(x: 18, y: 12, width: 150, height: 25)
-            dictionaryButton.isHidden = true
-            panel.contentView?.addSubview(dictionaryButton)
-            instantDictionaryTarget = dictionaryTarget
-            instantDictionaryButton = dictionaryButton
+        let size = NSSize(width: 460, height: dictionaryCandidate ? 360 : 290)
+        let model = instantCardModel ?? InstantSelectionCardModel()
+        model.sourceText = instantSelectionText
+        if let direction = onInstantLanguageDirection?() {
+            model.sourceLanguage = direction.source
+            model.targetLanguage = direction.target
         }
-        panel.orderFrontRegardless()
-        instantResultPanel = panel
-        instantResultLabel = label
-        instantCloseTarget = closeTarget
+        model.translatedText = ""
+        model.dictionaryText = nil
+        model.dictionaryURL = nil
+        model.errorMessage = nil
+        model.isLoading = true
+        model.showsSource = false
+        model.close = { [weak self] in self?.hideInstantSelectionPanels() }
+        model.retry = { [weak self] in self?.beginInstantTranslation() }
+        model.speak = { [weak self, weak model] in guard let text = model?.translatedText else { return }; self?.onSpeakInstantSelection?(text) }
+        model.openMainWindow = { [weak self] in guard let self else { return }; self.onOpenInstantSelectionMain?(self.instantSelectionText); self.hideInstantSelectionPanels() }
+        instantCardModel = model
+        let panel: NSPanel
+        if let current = instantResultPanel {
+            panel = current
+            panel.setFrame(NSRect(origin: panelOrigin(near: instantSelectionPoint, size: size), size: size), display: true, animate: true)
+        } else {
+            panel = makeInstantPanel(frame: NSRect(origin: panelOrigin(near: instantSelectionPoint, size: size), size: size))
+            panel.backgroundColor = .clear
+            panel.contentView = NSHostingView(rootView: InstantSelectionCardView(model: model))
+            panel.alphaValue = 0
+            panel.orderFrontRegardless()
+            NSAnimationContext.runAnimationGroup { context in context.duration = 0.18; panel.animator().alphaValue = 1 }
+            instantResultPanel = panel
+        }
         let panelID = ObjectIdentifier(panel)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 20) { [weak self] in
+        instantDismissWorkItem?.cancel()
+        let dismiss = DispatchWorkItem { [weak self, weak model] in
             guard let self, let current = self.instantResultPanel, ObjectIdentifier(current) == panelID else { return }
-            self.hideInstantSelectionPanels()
+            if model?.isHovered == true { self.scheduleInstantDismiss(panelID: panelID, after: 5) }
+            else { self.hideInstantSelectionPanels() }
         }
-        guard let onInstantSelection else { label.stringValue = "选中即译尚未就绪。"; return }
+        instantDismissWorkItem = dismiss
+        DispatchQueue.main.asyncAfter(deadline: .now() + 20, execute: dismiss)
+        guard let onInstantSelection else { model.isLoading = false; model.errorMessage = "选中即译尚未就绪。"; return }
         onInstantSelection(instantSelectionText) { [weak self] result in
             Task { @MainActor in
                 guard let self else { return }
                 let successfulTranslation = try? result.get()
-                let translation = successfulTranslation ?? "翻译失败，请检查当前翻译引擎。"
+                model.isLoading = false
+                if let successfulTranslation { model.translatedText = successfulTranslation }
+                else { model.errorMessage = "翻译失败，请检查当前翻译引擎。" }
                 if successfulTranslation != nil { UsageMetrics.increment(.instantSelection) }
-                self.instantResultLabel?.stringValue = translation
                 guard dictionaryCandidate else { return }
                 if let entry = try? await WiktionaryService().lookup(self.instantSelectionText) {
                     UsageMetrics.increment(.dictionaryLookup)
-                    var details = "\n\n词典 · \(entry.language) · \(entry.partOfSpeech)\n\(entry.definition)"
+                    var details = "词典 · \(entry.language) · \(entry.partOfSpeech)\n\(entry.definition)"
                     if let example = entry.example, !example.isEmpty { details += "\n例句：\(example)" }
-                    self.instantResultLabel?.stringValue = translation + details + "\n来源：Wiktionary"
-                    self.instantDictionaryButton?.isHidden = false
+                    model.dictionaryText = details + "\n来源：Wiktionary"
+                    model.dictionaryURL = WiktionaryService.pageURL(for: self.instantSelectionText)
                 }
             }
         }
+    }
+
+    private func scheduleInstantDismiss(panelID: ObjectIdentifier, after delay: TimeInterval) {
+        let item = DispatchWorkItem { [weak self] in
+            guard let self, let panel = self.instantResultPanel, ObjectIdentifier(panel) == panelID else { return }
+            if self.instantCardModel?.isHovered == true { self.scheduleInstantDismiss(panelID: panelID, after: 5) }
+            else { self.hideInstantSelectionPanels() }
+        }
+        instantDismissWorkItem = item
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: item)
     }
 
     private func isDictionaryCandidate(_ text: String) -> Bool {
@@ -292,8 +324,9 @@ final class GlobalCaptureService {
     private func makeInstantPanel(frame: NSRect) -> NSPanel {
         let panel = NSPanel(contentRect: frame, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         panel.level = .statusBar; panel.isOpaque = false
-        panel.backgroundColor = NSColor.windowBackgroundColor.withAlphaComponent(0.97)
+        panel.backgroundColor = .clear
         panel.hasShadow = true; panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        panel.isMovableByWindowBackground = false
         return panel
     }
 
@@ -306,8 +339,8 @@ final class GlobalCaptureService {
 
     private func hideInstantSelectionPanels() {
         instantIconPanel?.orderOut(nil); instantResultPanel?.orderOut(nil)
-        instantIconPanel = nil; instantResultPanel = nil; instantResultLabel = nil; instantActionTarget = nil; instantCloseTarget = nil
-        instantDictionaryTarget = nil; instantDictionaryButton = nil
+        instantDismissWorkItem?.cancel(); instantDismissWorkItem = nil
+        instantIconPanel = nil; instantResultPanel = nil; instantCardModel = nil; instantActionTarget = nil; instantCloseTarget = nil
     }
 
     func captureScreenshot() {

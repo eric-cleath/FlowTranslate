@@ -9,8 +9,8 @@ settings:
     GENERATE_INFOPLIST_FILE: YES
     INFOPLIST_KEY_CFBundleDisplayName: PallasOwl Translator
     INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.productivity
-    MARKETING_VERSION: 0.11.2
-    CURRENT_PROJECT_VERSION: 112
+    MARKETING_VERSION: 0.11.3
+    CURRENT_PROJECT_VERSION: 113
 targets:
   PallasOwl:
     type: application

@@ -24,6 +24,10 @@ final class GlobalCaptureService {
     private var progressStartedAt: Date?
     private var selectionMonitor: Any?
     private var instantEscapeMonitor: Any?
+    private var instantMouseDownPoint = CGPoint.zero
+    private var instantDidDrag = false
+    private var instantLastUserInput = Date.distantPast
+    private var instantIsPerformingCompatCopy = false
     private var instantSelectionText = ""
     private var lastInstantSelectionDate = Date.distantPast
     private var instantSelectionPoint = CGPoint.zero
@@ -53,12 +57,14 @@ final class GlobalCaptureService {
         if let instantEscapeMonitor { NSEvent.removeMonitor(instantEscapeMonitor); self.instantEscapeMonitor = nil }
         hideInstantSelectionPanels()
         guard enabled else { return }
-        selectionMonitor = NSEvent.addGlobalMonitorForEvents(matching: .leftMouseUp) { [weak self] event in
-            Task { @MainActor in self?.handlePossibleInstantSelection(at: NSEvent.mouseLocation) }
+        selectionMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .leftMouseDragged, .leftMouseUp, .rightMouseDown]) { [weak self] event in
+            Task { @MainActor in self?.handleInstantMouseEvent(event) }
         }
         instantEscapeMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            guard event.keyCode == 53 else { return }
-            Task { @MainActor in self?.hideInstantSelectionPanels() }
+            Task { @MainActor in
+                if self?.instantIsPerformingCompatCopy != true { self?.instantLastUserInput = Date() }
+                if event.keyCode == 53 { self?.hideInstantSelectionPanels() }
+            }
         }
     }
 
@@ -157,21 +163,61 @@ final class GlobalCaptureService {
         }
     }
 
-    private func handlePossibleInstantSelection(at point: CGPoint) {
+    private func handleInstantMouseEvent(_ event: NSEvent) {
+        instantLastUserInput = Date()
+        switch event.type {
+        case .leftMouseDown:
+            instantMouseDownPoint = NSEvent.mouseLocation
+            instantDidDrag = false
+        case .leftMouseDragged:
+            let point = NSEvent.mouseLocation
+            if hypot(point.x - instantMouseDownPoint.x, point.y - instantMouseDownPoint.y) >= 4 { instantDidDrag = true }
+        case .leftMouseUp:
+            guard instantDidDrag || event.clickCount >= 2 else { return }
+            let selectionTime = Date()
+            handlePossibleInstantSelection(at: NSEvent.mouseLocation, selectionTime: selectionTime)
+        case .rightMouseDown:
+            break
+        default:
+            break
+        }
+    }
+
+    private func handlePossibleInstantSelection(at point: CGPoint, selectionTime: Date) {
         guard NSWorkspace.shared.frontmostApplication?.bundleIdentifier != Bundle.main.bundleIdentifier else { return }
         if let panel = instantResultPanel, panel.frame.contains(point) { return }
         if let panel = instantIconPanel, !panel.frame.contains(point) {
             hideInstantSelectionPanels()
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) { [weak self] in
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { [weak self] in
             guard let self else { return }
             if let text = self.accessibilitySelectedText(), !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 self.presentInstantSelection(text, at: point)
             } else {
-                // “选中即译”不得模拟 Command+C。异步恢复剪贴板会与用户随后执行的
-                // 复制、粘贴或右键菜单竞争；不支持辅助功能选区读取的 App 仍可使用
-                // 用户主动触发的“划词翻译”快捷键。
-                self.hideInstantSelectionPanels()
+                guard self.instantLastUserInput <= selectionTime else { return }
+                self.captureInstantSelectionCompat(at: point, selectionTime: selectionTime)
+            }
+        }
+    }
+
+    private func captureInstantSelectionCompat(at point: CGPoint, selectionTime: Date) {
+        let pasteboard = NSPasteboard.general
+        let previousString = pasteboard.string(forType: .string)
+        let previousChange = pasteboard.changeCount
+        instantIsPerformingCompatCopy = true
+        postCommandC()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { [weak self] in
+            guard let self else { return }
+            self.instantIsPerformingCompatCopy = false
+            guard self.instantLastUserInput <= selectionTime,
+                  pasteboard.changeCount != previousChange,
+                  let text = pasteboard.string(forType: .string), !text.isEmpty else { return }
+            let copiedChange = pasteboard.changeCount
+            self.presentInstantSelection(text, at: point)
+            // 只在剪贴板仍是本次兼容读取结果时恢复，绝不覆盖用户后续的复制操作。
+            if pasteboard.changeCount == copiedChange, let previousString {
+                pasteboard.clearContents()
+                pasteboard.setString(previousString, forType: .string)
             }
         }
     }

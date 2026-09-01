@@ -28,6 +28,8 @@ final class GlobalCaptureService {
     private var instantResultLabel: NSTextField?
     private var instantActionTarget: InstantSelectionActionTarget?
     private var instantCloseTarget: InstantSelectionActionTarget?
+    private var instantDictionaryTarget: InstantSelectionActionTarget?
+    private var instantDictionaryButton: NSButton?
     private init() {}
 
     func start() {
@@ -227,12 +229,13 @@ final class GlobalCaptureService {
     private func beginInstantTranslation() {
         instantIconPanel?.orderOut(nil); instantIconPanel = nil
         instantResultPanel?.orderOut(nil); instantResultPanel = nil; instantResultLabel = nil
-        let size = NSSize(width: 440, height: 170)
+        let dictionaryCandidate = isDictionaryCandidate(instantSelectionText)
+        let size = NSSize(width: 440, height: dictionaryCandidate ? 270 : 170)
         let panel = makeInstantPanel(frame: NSRect(origin: panelOrigin(near: instantSelectionPoint, size: size), size: size))
         let label = NSTextField(wrappingLabelWithString: "正在翻译…")
         label.font = .systemFont(ofSize: 15)
-        label.frame = NSRect(x: 18, y: 18, width: 378, height: 134)
-        label.maximumNumberOfLines = 7
+        label.frame = NSRect(x: 18, y: dictionaryCandidate ? 45 : 18, width: 378, height: dictionaryCandidate ? 205 : 134)
+        label.maximumNumberOfLines = dictionaryCandidate ? 12 : 7
         let closeTarget = InstantSelectionActionTarget { [weak self] in self?.hideInstantSelectionPanels() }
         let closeButton = NSButton(title: "×", target: closeTarget, action: #selector(InstantSelectionActionTarget.trigger))
         closeButton.bezelStyle = .circular
@@ -241,6 +244,16 @@ final class GlobalCaptureService {
         closeButton.toolTip = "关闭"
         panel.contentView?.addSubview(label)
         panel.contentView?.addSubview(closeButton)
+        if dictionaryCandidate, let url = WiktionaryService.pageURL(for: instantSelectionText) {
+            let dictionaryTarget = InstantSelectionActionTarget { NSWorkspace.shared.open(url) }
+            let dictionaryButton = NSButton(title: "在 Wiktionary 中查看", target: dictionaryTarget, action: #selector(InstantSelectionActionTarget.trigger))
+            dictionaryButton.bezelStyle = .inline
+            dictionaryButton.frame = NSRect(x: 18, y: 12, width: 150, height: 25)
+            dictionaryButton.isHidden = true
+            panel.contentView?.addSubview(dictionaryButton)
+            instantDictionaryTarget = dictionaryTarget
+            instantDictionaryButton = dictionaryButton
+        }
         panel.orderFrontRegardless()
         instantResultPanel = panel
         instantResultLabel = label
@@ -253,9 +266,24 @@ final class GlobalCaptureService {
         guard let onInstantSelection else { label.stringValue = "选中即译尚未就绪。"; return }
         onInstantSelection(instantSelectionText) { [weak self] result in
             Task { @MainActor in
-                self?.instantResultLabel?.stringValue = (try? result.get()) ?? "翻译失败，请检查当前翻译引擎。"
+                guard let self else { return }
+                let translation = (try? result.get()) ?? "翻译失败，请检查当前翻译引擎。"
+                self.instantResultLabel?.stringValue = translation
+                guard dictionaryCandidate else { return }
+                if let entry = try? await WiktionaryService().lookup(self.instantSelectionText) {
+                    var details = "\n\n词典 · \(entry.language) · \(entry.partOfSpeech)\n\(entry.definition)"
+                    if let example = entry.example, !example.isEmpty { details += "\n例句：\(example)" }
+                    self.instantResultLabel?.stringValue = translation + details + "\n来源：Wiktionary"
+                    self.instantDictionaryButton?.isHidden = false
+                }
             }
         }
+    }
+
+    private func isDictionaryCandidate(_ text: String) -> Bool {
+        let cleaned = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard cleaned.count <= 60, !cleaned.contains("\n") else { return false }
+        return cleaned.split(whereSeparator: { $0.isWhitespace }).count <= 4 && cleaned.range(of: "[.!?。！？]$", options: .regularExpression) == nil
     }
 
     private func makeInstantPanel(frame: NSRect) -> NSPanel {
@@ -276,6 +304,7 @@ final class GlobalCaptureService {
     private func hideInstantSelectionPanels() {
         instantIconPanel?.orderOut(nil); instantResultPanel?.orderOut(nil)
         instantIconPanel = nil; instantResultPanel = nil; instantResultLabel = nil; instantActionTarget = nil; instantCloseTarget = nil
+        instantDictionaryTarget = nil; instantDictionaryButton = nil
     }
 
     func captureScreenshot() {

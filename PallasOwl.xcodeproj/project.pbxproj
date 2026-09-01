@@ -18,6 +18,7 @@
 		761D674818BF78AFEA977603 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 61569C4B3102CDAB3173F5A2 /* SettingsView.swift */; };
 		76EB7971AEB364FD916782E5 /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 851D21A6B9F04A6425915EEF /* AppState.swift */; };
 		82BE9D73EB50D82C1E8D7B2A /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 3021665D840B37AC8CFD03D8 /* Assets.xcassets */; };
+		85DB869AB1C1890B4BB540AB /* WiktionaryService.swift in Sources */ = {isa = PBXBuildFile; fileRef = E73CB586F459EE84D6339493 /* WiktionaryService.swift */; };
 		8B38CC9E313A61C254D650FD /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = A8A8B40D97FEC5B67E1EAF27 /* Localizable.strings */; };
 		965D1984D26179E92CCDCC93 /* FlowTranslateApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7529570319D3AC17571FCC25 /* FlowTranslateApp.swift */; };
 		9D1F3C3AE7C550A57BFAA9BB /* LiveCaptionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3EA6EDC2EE90B70022B1D15D /* LiveCaptionView.swift */; };
@@ -48,6 +49,7 @@
 		BD7D675D5A8D9623F3216A03 /* ja */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ja; path = ja.lproj/Localizable.strings; sourceTree = "<group>"; };
 		C53626090981AB6770D213A1 /* LiveCaptionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveCaptionService.swift; sourceTree = "<group>"; };
 		E6EE74CA4DDB7EA475A0CC39 /* DocumentImportService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentImportService.swift; sourceTree = "<group>"; };
+		E73CB586F459EE84D6339493 /* WiktionaryService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WiktionaryService.swift; sourceTree = "<group>"; };
 		F9D0445760535A61469ACEE6 /* SystemTranslationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemTranslationService.swift; sourceTree = "<group>"; };
 		FC5220473A6D0067E052B7C5 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/Localizable.strings"; sourceTree = "<group>"; };
 		FC9493BA0AA78C19CD6CAB44 /* DocumentTranslationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentTranslationView.swift; sourceTree = "<group>"; };
@@ -64,6 +66,7 @@
 				2DBB0E84107DB8666701B7A8 /* GlobalCaptureService.swift */,
 				C53626090981AB6770D213A1 /* LiveCaptionService.swift */,
 				F9D0445760535A61469ACEE6 /* SystemTranslationService.swift */,
+				E73CB586F459EE84D6339493 /* WiktionaryService.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -217,6 +220,7 @@
 				761D674818BF78AFEA977603 /* SettingsView.swift in Sources */,
 				4C73B6A573977418C6ED08E2 /* SystemTranslationService.swift in Sources */,
 				FE83E8ADCE7C1EEE6D21E7FD /* TranslatorView.swift in Sources */,
+				85DB869AB1C1890B4BB540AB /* WiktionaryService.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

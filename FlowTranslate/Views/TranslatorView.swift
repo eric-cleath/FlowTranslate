@@ -10,19 +10,12 @@ struct TranslatorView: View {
     var body: some View {
         @Bindable var state = state
         VStack(spacing: 0) {
-            Picker("模式", selection: Binding(get: { showsLiveCaptionMode ? "__live" : (showsDocumentMode ? "__document" : state.mode.rawValue) }, set: { value in
+            ModeNavigationBar(selection: Binding(get: { showsLiveCaptionMode ? "__live" : (showsDocumentMode ? "__document" : state.mode.rawValue) }, set: { value in
                 if value == "__document" { if !showsDocumentMode { state.clearWorkspace() }; showsLiveCaptionMode = false; showsDocumentMode = true }
                 else if value == "__live" { state.clearWorkspace(); showsDocumentMode = false; showsLiveCaptionMode = true }
                 else if let mode = WorkMode(rawValue: value) { showsDocumentMode = false; showsLiveCaptionMode = false; state.switchMode(to: mode) }
-            })) {
-                ForEach(WorkMode.allCases.filter { $0 != .summarize }) { mode in
-                    Label(LocalizedStringKey(mode.rawValue), systemImage: mode.systemIcon).tag(mode.rawValue)
-                }
-                Label("文档", systemImage: "doc.text").tag("__document")
-                Label("实时字幕", systemImage: "captions.bubble").tag("__live")
-            }
-            .pickerStyle(.segmented)
-            .padding()
+            }))
+            .padding(.horizontal).padding(.vertical, 12)
 
             if showsLiveCaptionMode {
                 LiveCaptionView()
@@ -236,5 +229,74 @@ struct TranslatorView: View {
             }.font(.caption).foregroundStyle(.secondary)
         }
         .frame(minWidth: 300)
+    }
+}
+
+private struct ModeNavigationItem: Identifiable {
+    let id: String
+    let title: String
+    let icon: String
+}
+
+private struct ModeNavigationBar: View {
+    @Binding var selection: String
+    @State private var hoveredID: String?
+    @Namespace private var selectedBackground
+
+    private let items: [ModeNavigationItem] = [
+        .init(id: WorkMode.translate.rawValue, title: WorkMode.translate.rawValue, icon: WorkMode.translate.systemIcon),
+        .init(id: WorkMode.polish.rawValue, title: WorkMode.polish.rawValue, icon: WorkMode.polish.systemIcon),
+        .init(id: WorkMode.crossLanguageWriting.rawValue, title: WorkMode.crossLanguageWriting.rawValue, icon: WorkMode.crossLanguageWriting.systemIcon),
+        .init(id: "__document", title: "文档", icon: "doc.text"),
+        .init(id: "__live", title: "实时字幕", icon: "captions.bubble")
+    ]
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Text("模式")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            HStack(spacing: 3) {
+                ForEach(items) { item in
+                    Button {
+                        withAnimation(.snappy(duration: 0.24)) { selection = item.id }
+                    } label: {
+                        Label {
+                            Text(LocalizedStringKey(item.title))
+                        } icon: {
+                            Image(systemName: item.icon)
+                        }
+                        .font(.system(size: 12.5, weight: selection == item.id ? .semibold : .medium))
+                        .foregroundStyle(selection == item.id ? Color.white : Color.primary.opacity(0.78))
+                        .padding(.horizontal, 13).padding(.vertical, 7)
+                        .frame(minWidth: item.id == "__live" ? 92 : 74)
+                        .background {
+                            if selection == item.id {
+                                Capsule(style: .continuous)
+                                    .fill(LinearGradient(
+                                        colors: [Color(red: 0.05, green: 0.69, blue: 0.98), Color(red: 0.48, green: 0.30, blue: 1.0)],
+                                        startPoint: .leading,
+                                        endPoint: .trailing
+                                    ))
+                                    .matchedGeometryEffect(id: "selectedMode", in: selectedBackground)
+                                    .shadow(color: Color.blue.opacity(0.22), radius: 5, y: 2)
+                            } else if hoveredID == item.id {
+                                Capsule(style: .continuous).fill(Color.primary.opacity(0.075))
+                            }
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .onHover { hovering in
+                        withAnimation(.easeOut(duration: 0.12)) { hoveredID = hovering ? item.id : nil }
+                    }
+                    .help(item.title)
+                }
+            }
+            .padding(4)
+            .background(.ultraThinMaterial, in: Capsule(style: .continuous))
+            .overlay(Capsule(style: .continuous).stroke(Color.primary.opacity(0.10), lineWidth: 1))
+            .shadow(color: .black.opacity(0.07), radius: 7, y: 2)
+        }
+        .frame(maxWidth: .infinity, alignment: .center)
     }
 }

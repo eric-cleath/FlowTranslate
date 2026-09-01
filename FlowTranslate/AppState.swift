@@ -72,7 +72,7 @@ final class AppState {
     var launchAtLogin = SMAppService.mainApp.status == .enabled
     var editorFontSize = UserDefaults.standard.object(forKey: "editorFontSize") as? Double ?? 16
     var editorLineSpacing = UserDefaults.standard.object(forKey: "editorLineSpacing") as? Double ?? 5
-    var selectedVoiceIdentifier = UserDefaults.standard.string(forKey: "selectedVoiceIdentifier") ?? ""
+    var voiceIdentifiersByLanguage: [String: String] = AppState.loadSpeechVoices()
     var isSpeaking = false
     var shortcuts: [ShortcutAction: ShortcutConfig] = AppState.loadShortcuts()
 
@@ -87,6 +87,7 @@ final class AppState {
     }()
 
     init() {
+        migrateLegacySpeechVoiceIfNeeded()
         speechObserver.didFinish = { [weak self] in Task { @MainActor in self?.isSpeaking = false } }
         speechSynthesizer.delegate = speechObserver
         migrateServiceListsIfNeeded()
@@ -253,7 +254,8 @@ final class AppState {
         speechSynthesizer.stopSpeaking(at: .immediate)
         let utterance = AVSpeechUtterance(string: text)
         let code = speechLanguageCode(for: language, text: text)
-        let selectedVoice = selectedVoiceIdentifier.isEmpty ? nil : AVSpeechSynthesisVoice(identifier: selectedVoiceIdentifier)
+        let selectedIdentifier = voiceIdentifiersByLanguage[languagePreferenceKey(for: code)] ?? ""
+        let selectedVoice = selectedIdentifier.isEmpty ? nil : AVSpeechSynthesisVoice(identifier: selectedIdentifier)
         // A fixed English voice cannot correctly pronounce a Chinese result (and vice versa).
         // Keep the user's preferred voice for matching languages, otherwise use the best
         // installed macOS voice for the text being read.
@@ -307,16 +309,26 @@ final class AppState {
         AVSpeechSynthesisVoice.speechVoices().sorted { ($0.language, $0.name) < ($1.language, $1.name) }
     }
 
-    func setSpeechVoice(_ identifier: String) {
-        selectedVoiceIdentifier = identifier
-        UserDefaults.standard.set(identifier, forKey: "selectedVoiceIdentifier")
+    func speechVoiceIdentifier(for languageCode: String) -> String {
+        voiceIdentifiersByLanguage[languagePreferenceKey(for: languageCode)] ?? ""
+    }
+
+    func setSpeechVoice(_ identifier: String, for languageCode: String) {
+        let key = languagePreferenceKey(for: languageCode)
+        if identifier.isEmpty { voiceIdentifiersByLanguage.removeValue(forKey: key) }
+        else { voiceIdentifiersByLanguage[key] = identifier }
+        if let data = try? JSONEncoder().encode(voiceIdentifiersByLanguage) {
+            UserDefaults.standard.set(data, forKey: "speechVoicesByLanguage")
+        }
         stopSpeaking()
     }
 
-    func toggleSpeechPreview() {
+    func toggleSpeechPreview(identifier: String? = nil, languageCode: String = "en") {
         if isSpeaking { stopSpeaking(); return }
-        let voice = selectedVoiceIdentifier.isEmpty ? nil : AVSpeechSynthesisVoice(identifier: selectedVoiceIdentifier)
-        let language = voice?.language.lowercased() ?? Locale.current.language.languageCode?.identifier.lowercased() ?? "en"
+        let savedIdentifier = speechVoiceIdentifier(for: languageCode)
+        let voiceIdentifier = identifier ?? (savedIdentifier.isEmpty ? nil : savedIdentifier)
+        let voice = voiceIdentifier.flatMap(AVSpeechSynthesisVoice.init(identifier:))
+        let language = voice?.language.lowercased() ?? languageCode.lowercased()
         let sample: String
         if language.hasPrefix("zh") { sample = "你好，这是 PallasOwl 的语音试听。" }
         else if language.hasPrefix("ja") { sample = "こんにちは、PallasOwl の音声サンプルです。" }
@@ -329,6 +341,28 @@ final class AppState {
         utterance.rate = AVSpeechUtteranceDefaultSpeechRate
         isSpeaking = true
         speechSynthesizer.speak(utterance)
+    }
+
+    private static func loadSpeechVoices() -> [String: String] {
+        guard let data = UserDefaults.standard.data(forKey: "speechVoicesByLanguage"),
+              let voices = try? JSONDecoder().decode([String: String].self, from: data) else { return [:] }
+        return voices
+    }
+
+    private func migrateLegacySpeechVoiceIfNeeded() {
+        guard voiceIdentifiersByLanguage.isEmpty,
+              let identifier = UserDefaults.standard.string(forKey: "selectedVoiceIdentifier"),
+              !identifier.isEmpty,
+              let voice = AVSpeechSynthesisVoice(identifier: identifier) else { return }
+        setSpeechVoice(identifier, for: voice.language)
+        UserDefaults.standard.removeObject(forKey: "selectedVoiceIdentifier")
+    }
+
+    private func languagePreferenceKey(for code: String) -> String {
+        let normalized = code.lowercased()
+        if normalized.hasPrefix("zh-hant") || normalized.hasPrefix("zh-tw") || normalized.hasPrefix("zh-hk") { return "zh-Hant" }
+        if normalized.hasPrefix("zh") { return "zh-Hans" }
+        return String(normalized.split(separator: "-").first ?? Substring(normalized))
     }
 
     func saveSettings() throws {

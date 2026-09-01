@@ -563,10 +563,9 @@ struct SettingsView: View {
                         Button {
                             showsVoicePicker = true
                         } label: {
-                            Text(state.selectedVoiceIdentifier.isEmpty ? "自动选择" : (state.availableVoices.first { $0.identifier == state.selectedVoiceIdentifier }?.name ?? "选择语音"))
+                            Text(state.voiceIdentifiersByLanguage.isEmpty ? "各语言均自动选择" : "已配置 \(state.voiceIdentifiersByLanguage.count) 种语言")
                                 .frame(width: 210, alignment: .leading)
                         }
-                        Button(state.isSpeaking ? "停止试听" : "试听") { state.toggleSpeechPreview() }
                     }
                 }
                 Spacer()
@@ -650,15 +649,17 @@ private struct VoicePickerSheet: View {
     @Environment(AppState.self) private var state
     @Binding var isPresented: Bool
     @State private var searchText = ""
-    @State private var language = "全部语言"
+    @State private var languageCode = "en"
 
-    private var languages: [String] {
-        ["全部语言"] + Set(state.availableVoices.map(\.language)).sorted()
+    private var language: Language {
+        Language.supported.first(where: { $0.code == languageCode }) ?? Language.supported.first(where: { $0.code == "en" })!
     }
+
+    private var selectedIdentifier: String { state.speechVoiceIdentifier(for: languageCode) }
 
     private var voices: [AVSpeechSynthesisVoice] {
         state.availableVoices.filter { voice in
-            (language == "全部语言" || voice.language == language) &&
+            voiceMatchesSelectedLanguage(voice) &&
             (searchText.isEmpty || voice.name.localizedCaseInsensitiveContains(searchText) || voice.language.localizedCaseInsensitiveContains(searchText))
         }.sorted { left, right in
             left.quality == right.quality ? (left.language, left.name) < (right.language, right.name) : left.quality.rawValue > right.quality.rawValue
@@ -674,18 +675,20 @@ private struct VoicePickerSheet: View {
             }
             HStack {
                 TextField("搜索名称或语言", text: $searchText).textFieldStyle(.roundedBorder)
-                Picker("语言", selection: $language) { ForEach(languages, id: \.self, content: Text.init) }.frame(width: 190)
+                Picker("语言", selection: $languageCode) {
+                    ForEach(Language.supported.filter { $0.code != "auto" }) { Text(LocalizedStringKey($0.name)).tag($0.code) }
+                }.frame(width: 190)
             }
             Button {
-                state.setSpeechVoice("")
+                state.setSpeechVoice("", for: languageCode)
             } label: {
-                HStack { Image(systemName: state.selectedVoiceIdentifier.isEmpty ? "checkmark.circle.fill" : "circle"); Text("自动选择（根据文本语言）"); Spacer() }
-            }.buttonStyle(.plain).padding(9).background(Color.accentColor.opacity(state.selectedVoiceIdentifier.isEmpty ? 0.12 : 0), in: RoundedRectangle(cornerRadius: 8))
+                HStack { Image(systemName: selectedIdentifier.isEmpty ? "checkmark.circle.fill" : "circle"); Text("\(language.name)：自动选择"); Spacer() }
+            }.buttonStyle(.plain).padding(9).background(Color.accentColor.opacity(selectedIdentifier.isEmpty ? 0.12 : 0), in: RoundedRectangle(cornerRadius: 8))
             List(voices, id: \.identifier) { voice in
                 HStack {
-                    Button { state.setSpeechVoice(voice.identifier) } label: {
+                    Button { state.setSpeechVoice(voice.identifier, for: languageCode) } label: {
                         HStack {
-                            Image(systemName: state.selectedVoiceIdentifier == voice.identifier ? "checkmark.circle.fill" : "circle")
+                            Image(systemName: selectedIdentifier == voice.identifier ? "checkmark.circle.fill" : "circle")
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(voice.name)
                                 Text("\(voice.language) · \(qualityName(voice.quality))").font(.caption).foregroundStyle(.secondary)
@@ -693,14 +696,20 @@ private struct VoicePickerSheet: View {
                         }
                     }.buttonStyle(.plain)
                     Spacer()
-                    Button(state.isSpeaking && state.selectedVoiceIdentifier == voice.identifier ? "停止" : "试听") {
-                        if state.selectedVoiceIdentifier != voice.identifier { state.setSpeechVoice(voice.identifier) }
-                        state.toggleSpeechPreview()
+                    Button(state.isSpeaking ? "停止" : "试听") {
+                        state.toggleSpeechPreview(identifier: voice.identifier, languageCode: languageCode)
                     }
                 }.padding(.vertical, 3)
             }
             Text("显示 \(voices.count) 个语音；更多语音可在 macOS 系统设置中下载。").font(.caption).foregroundStyle(.secondary)
         }.padding(18).frame(width: 570, height: 560)
+    }
+
+    private func voiceMatchesSelectedLanguage(_ voice: AVSpeechSynthesisVoice) -> Bool {
+        let code = voice.language.lowercased()
+        if languageCode == "zh-Hant" { return code.hasPrefix("zh-tw") || code.hasPrefix("zh-hk") }
+        if languageCode == "zh-Hans" { return code.hasPrefix("zh-cn") }
+        return code.split(separator: "-").first.map(String.init) == languageCode.lowercased()
     }
 
     private func qualityName(_ quality: AVSpeechSynthesisVoiceQuality) -> String {

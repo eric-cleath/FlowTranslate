@@ -252,12 +252,50 @@ final class AppState {
         guard !text.isEmpty else { return }
         speechSynthesizer.stopSpeaking(at: .immediate)
         let utterance = AVSpeechUtterance(string: text)
-        let code: String
-        switch language.code { case "zh-Hans": code = "zh-CN"; case "zh-Hant": code = "zh-TW"; case "ja": code = "ja-JP"; case "ko": code = "ko-KR"; default: code = "en-US" }
-        utterance.voice = selectedVoiceIdentifier.isEmpty ? AVSpeechSynthesisVoice(language: code) : AVSpeechSynthesisVoice(identifier: selectedVoiceIdentifier)
+        let code = speechLanguageCode(for: language, text: text)
+        let selectedVoice = selectedVoiceIdentifier.isEmpty ? nil : AVSpeechSynthesisVoice(identifier: selectedVoiceIdentifier)
+        // A fixed English voice cannot correctly pronounce a Chinese result (and vice versa).
+        // Keep the user's preferred voice for matching languages, otherwise use the best
+        // installed macOS voice for the text being read.
+        if let selectedVoice, voice(selectedVoice, supports: code) {
+            utterance.voice = selectedVoice
+        } else {
+            utterance.voice = AVSpeechSynthesisVoice(language: code)
+        }
         utterance.rate = AVSpeechUtteranceDefaultSpeechRate
         isSpeaking = true
         speechSynthesizer.speak(utterance)
+    }
+
+    private func voice(_ voice: AVSpeechSynthesisVoice, supports languageCode: String) -> Bool {
+        let voiceBase = voice.language.split(separator: "-").first?.lowercased()
+        let requestedBase = languageCode.split(separator: "-").first?.lowercased()
+        return voiceBase == requestedBase
+    }
+
+    private func speechLanguageCode(for language: Language, text: String) -> String {
+        switch language.code {
+        case "zh-Hans": return "zh-CN"
+        case "zh-Hant": return "zh-TW"
+        case "en": return "en-US"
+        case "ja": return "ja-JP"
+        case "ko": return "ko-KR"
+        case "fr": return "fr-FR"
+        case "de": return "de-DE"
+        case "es": return "es-ES"
+        case "pt": return "pt-BR"
+        case "it": return "it-IT"
+        case "ar": return "ar-SA"
+        case "ru": return "ru-RU"
+        case "vi": return "vi-VN"
+        case "id": return "id-ID"
+        case "th": return "th-TH"
+        default:
+            if text.range(of: #"[\u{3040}-\u{30ff}]"#, options: .regularExpression) != nil { return "ja-JP" }
+            if text.range(of: #"[\u{ac00}-\u{d7af}]"#, options: .regularExpression) != nil { return "ko-KR" }
+            if text.range(of: #"[\u{4e00}-\u{9fff}]"#, options: .regularExpression) != nil { return "zh-CN" }
+            return "en-US"
+        }
     }
 
     func stopSpeaking() {

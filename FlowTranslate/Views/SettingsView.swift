@@ -77,7 +77,7 @@ struct SettingsView: View {
     var body: some View {
         VStack(spacing: 18) {
             Picker("设置分类", selection: $category) { ForEach(SettingsCategory.allCases) { Text(LocalizedStringKey($0.rawValue)).tag($0) } }
-                .pickerStyle(.segmented).frame(width: 850)
+                .labelsHidden().pickerStyle(.segmented).frame(width: 850)
             Group {
                 switch category {
                 case .general: generalSettings

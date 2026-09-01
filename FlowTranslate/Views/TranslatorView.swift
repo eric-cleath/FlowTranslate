@@ -260,10 +260,7 @@ private struct ModeNavigationBar: View {
     ]
 
     var body: some View {
-        HStack(spacing: 10) {
-            Text("模式")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
+        HStack(spacing: 0) {
             HStack(spacing: 3) {
                 ForEach(items) { item in
                     Button {

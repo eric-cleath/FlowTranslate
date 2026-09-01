@@ -14,6 +14,7 @@ private final class SpeechObserver: NSObject, AVSpeechSynthesizerDelegate {
 final class AppState {
     let liveCaption = LiveCaptionModel()
     let mediaProcessing = MediaProcessingModel()
+    var requestedMainMode: String?
     var mode: WorkMode = .translate
     var sourceLanguage = Language.supported[0]
     var targetLanguage = Language.supported[1]

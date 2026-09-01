@@ -93,11 +93,13 @@ private struct MenuBarContent: View {
     }
 
     private func showLiveCaptions() {
-        UserDefaults.standard.set(true, forKey: "openLiveCaptionMode")
+        state.requestedMainMode = "__live"
         openWindow(id: "translator")
+        bringWindowToFront(title: "PallasOwl Translator")
     }
 
     private func toggleLiveCaptions() {
+        showLiveCaptions()
         if state.liveCaption.isRunning { state.liveCaption.stop(); return }
         state.liveCaption.translateHandler = { text, source, target in
             try await state.translateLiveCaption(text, source: source, target: target)

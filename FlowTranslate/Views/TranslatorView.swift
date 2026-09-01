@@ -100,13 +100,9 @@ struct TranslatorView: View {
         .frame(minWidth: 760, minHeight: 520)
         .onAppear {
             bindGlobalShortcuts()
-            if UserDefaults.standard.bool(forKey: "openLiveCaptionMode") {
-                UserDefaults.standard.removeObject(forKey: "openLiveCaptionMode")
-                showsDocumentMode = false
-                showsMediaMode = false
-                showsLiveCaptionMode = true
-            }
+            applyRequestedMainMode()
         }
+        .onChange(of: state.requestedMainMode) { _, _ in applyRequestedMainMode() }
         .onChange(of: state.input) { _, value in
             if value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 state.output = ""; state.translationSummary = ""; state.errorMessage = nil; state.summaryError = nil
@@ -171,6 +167,7 @@ struct TranslatorView: View {
         showsMediaMode = false
         showsLiveCaptionMode = true
         openWindow(id: "translator")
+        bringTranslatorWindowToFront()
         if start {
             if state.liveCaption.isRunning { state.liveCaption.stop() }
             else {
@@ -179,6 +176,23 @@ struct TranslatorView: View {
                 }
                 Task { await state.liveCaption.start() }
             }
+        }
+    }
+
+    private func applyRequestedMainMode() {
+        guard let requested = state.requestedMainMode else { return }
+        state.requestedMainMode = nil
+        if requested == "__live" {
+            showsDocumentMode = false
+            showsMediaMode = false
+            showsLiveCaptionMode = true
+        }
+    }
+
+    private func bringTranslatorWindowToFront() {
+        NSApp.activate(ignoringOtherApps: true)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
+            NSApp.windows.first(where: { $0.title == "PallasOwl Translator" })?.makeKeyAndOrderFront(nil)
         }
     }
 

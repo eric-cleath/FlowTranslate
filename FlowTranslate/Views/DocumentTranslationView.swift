@@ -27,7 +27,9 @@ final class DocumentTranslationModel {
 
     func chooseFile() {
         let panel = NSOpenPanel()
-        panel.allowedContentTypes = [.pdf, .plainText, .rtf, .image, .init(filenameExtension: "docx")!, .init(filenameExtension: "md")!]
+        panel.allowedContentTypes = [.pdf, .plainText, .rtf, .image]
+            + ["doc", "docx", "md", "markdown", "rtfd", "png", "jpg", "jpeg", "heic", "tif", "tiff", "bmp"]
+                .compactMap { UTType(filenameExtension: $0) }
         panel.allowsMultipleSelection = false
         panel.canChooseDirectories = false
         if panel.runModal() == .OK, let url = panel.url {
@@ -258,7 +260,12 @@ struct DocumentTranslationView: View {
             VStack(alignment: .leading, spacing: 7) {
                 Text(model.displayName.isEmpty ? "尚未选择文件" : model.displayName).fontWeight(.semibold).lineLimit(1)
                 if !model.displayName.isEmpty { Label(model.fileURL == nil ? "图片粘贴成功" : "文件载入成功", systemImage: "checkmark.circle.fill").font(.caption).foregroundStyle(.green) }
-                else { Text("选择文件或从剪贴板粘贴图片").font(.caption).foregroundStyle(.secondary) }
+                else {
+                    Text("支持：PDF、Word（DOC/DOCX）、TXT、Markdown、RTF/RTFD、图片（PNG/JPG/JPEG/HEIC/TIFF/BMP）")
+                        .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                    Text("也可从剪贴板粘贴图片，或在下方直接输入、粘贴文字")
+                        .font(.caption).foregroundStyle(.tertiary)
+                }
             }
             Spacer()
         }.padding(10).background(Color.accentColor.opacity(0.06), in: RoundedRectangle(cornerRadius: 11))

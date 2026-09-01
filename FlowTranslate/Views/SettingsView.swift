@@ -58,7 +58,7 @@ private struct ModelComboBox: NSViewRepresentable {
 
 struct SettingsView: View {
     @Environment(AppState.self) private var state
-    @State private var category: SettingsCategory = .translation
+    @State private var category: SettingsCategory = .general
     @State private var selectedTranslationID = ""
     @State private var selectedWritingID = ""
     @State private var selectedDocumentID = ""
@@ -102,7 +102,7 @@ struct SettingsView: View {
         .onDisappear {
             // The Settings scene is reused by macOS. Reset the page so opening
             // Settings from the main window does not remain on the last page.
-            category = .translation
+            category = .general
         }
     }
 

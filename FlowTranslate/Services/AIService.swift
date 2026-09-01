@@ -82,7 +82,7 @@ actor AIService {
         case .polish:
             instruction = "Edit and improve the user text while strictly preserving its original language. Correct grammar, spelling, punctuation, clarity, and flow. Do not translate it, add new facts, or change its meaning. Preserve formatting and return only the improved text."
         case .crossLanguageWriting:
-            instruction = "The user will express an intent, usually in Chinese. Rewrite it as natural, idiomatic, well-structured \(target.name) suitable for direct use. Do not translate literally. Return only the final text."
+            instruction = "The user will express an intent in \(source.name). Rewrite it as natural, idiomatic, well-structured \(target.name) suitable for direct use. Do not translate literally. Return only the final text."
         case .summarize:
             instruction = "Summarize the user text concisely in \(target.name). Return only the summary."
         }

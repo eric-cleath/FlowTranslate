@@ -16,6 +16,7 @@ final class AppState {
     var mode: WorkMode = .translate
     var sourceLanguage = Language.supported[0]
     var targetLanguage = Language.supported[1]
+    var crossWritingSourceLanguage = Language.supported.first(where: { $0.code == (UserDefaults.standard.string(forKey: "crossWritingSourceLanguage") ?? "zh-Hans") }) ?? Language.supported[1]
     var crossWritingTargetLanguage = Language.supported.first(where: { $0.code == (UserDefaults.standard.string(forKey: "crossWritingTargetLanguage") ?? "en") }) ?? Language.supported[3]
     var input = ""
     var output = ""
@@ -105,7 +106,7 @@ final class AppState {
         guard !cleaned.isEmpty else { return }
         translationSummary = ""; summaryError = nil
         let isTranslation = mode == .translate
-        let effectiveSource = mode == .crossLanguageWriting ? (Language.supported.first { $0.code == "zh-Hans" } ?? sourceLanguage) : sourceLanguage
+        let effectiveSource = mode == .crossLanguageWriting ? crossWritingSourceLanguage : sourceLanguage
         let effectiveTarget = mode == .crossLanguageWriting ? crossWritingTargetLanguage : targetLanguage
         await reloadSecretsWithRetry(scope: .currentWork)
         let activeProvider = resolvedTranslationProvider()
@@ -305,6 +306,7 @@ final class AppState {
         UserDefaults.standard.set(Array(enabledTranslationAIs), forKey: "enabledTranslationAIs")
         UserDefaults.standard.set(editorFontSize, forKey: "editorFontSize")
         UserDefaults.standard.set(editorLineSpacing, forKey: "editorLineSpacing")
+        UserDefaults.standard.set(crossWritingSourceLanguage.code, forKey: "crossWritingSourceLanguage")
         UserDefaults.standard.set(crossWritingTargetLanguage.code, forKey: "crossWritingTargetLanguage")
         UserDefaults.standard.set(deepLAPIType.rawValue, forKey: "deepLAPIType")
         UserDefaults.standard.set(deepLFormality.rawValue, forKey: "deepLFormality")

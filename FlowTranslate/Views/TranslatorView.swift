@@ -35,16 +35,23 @@ struct TranslatorView: View {
                     Label("保持原文语言", systemImage: "character.cursor.ibeam")
                         .frame(maxWidth: .infinity)
                 } else if state.mode == .crossLanguageWriting {
-                    Text("简体中文").frame(maxWidth: .infinity)
+                    languagePicker("源语言", selection: $state.crossWritingSourceLanguage, allowsAuto: false)
                 } else {
                     languagePicker("源语言", selection: $state.sourceLanguage, allowsAuto: true)
                 }
                 if state.mode != .polish {
-                    Button(action: state.swapLanguages) {
+                    Button {
+                        if state.mode == .crossLanguageWriting {
+                            let source = state.crossWritingSourceLanguage
+                            state.crossWritingSourceLanguage = state.crossWritingTargetLanguage
+                            state.crossWritingTargetLanguage = source
+                            try? state.saveSettings()
+                        } else { state.swapLanguages() }
+                    } label: {
                         Image(systemName: "arrow.left.arrow.right")
                     }
                     .buttonStyle(.plain)
-                    .disabled(state.mode == .crossLanguageWriting || state.sourceLanguage.code == "auto")
+                    .disabled(state.mode != .crossLanguageWriting && state.sourceLanguage.code == "auto")
                     languagePicker(
                         "目标语言",
                         selection: state.mode == .crossLanguageWriting ? $state.crossWritingTargetLanguage : $state.targetLanguage,
@@ -55,7 +62,7 @@ struct TranslatorView: View {
             .padding(.horizontal)
 
             HSplitView {
-                editor(title: "原文", text: $state.input, placeholder: "输入或粘贴文字…", language: state.mode == .crossLanguageWriting ? Language.supported[1] : state.sourceLanguage)
+                editor(title: "原文", text: $state.input, placeholder: "输入或粘贴文字…", language: state.mode == .crossLanguageWriting ? state.crossWritingSourceLanguage : state.sourceLanguage)
                 editor(title: "结果", text: $state.output, placeholder: "处理结果会显示在这里", language: state.mode == .crossLanguageWriting ? state.crossWritingTargetLanguage : state.targetLanguage, isOutput: true)
             }
             .padding()
@@ -107,6 +114,8 @@ struct TranslatorView: View {
                 state.output = ""; state.translationSummary = ""; state.errorMessage = nil; state.summaryError = nil
             }
         }
+        .onChange(of: state.crossWritingSourceLanguage) { _, _ in try? state.saveSettings() }
+        .onChange(of: state.crossWritingTargetLanguage) { _, _ in try? state.saveSettings() }
         .onReceive(NSWorkspace.shared.notificationCenter.publisher(for: NSWorkspace.didWakeNotification)) { _ in
             state.reloadSecretsAfterUnlock()
         }

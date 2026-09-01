@@ -10,13 +10,13 @@ tags:
   - AI写作
   - 开发记录
 status: active
-current_version: 0.11.1
-updated: 2026-08-31
+current_version: 0.11.2
+updated: 2026-09-01
 ---
 
 # PallasOwl Translator（原 FlowTranslate）开发记录与下一版本计划
 
-## 下一版本开发中 — 菜单栏与选中即译稳定性
+## 0.11.2（2026-09-01）— 菜单栏与选中即译稳定性
 
 - 修复焦点位于其他 App 时，从菜单栏选择“设置”可能无法显示设置窗口的问题；打开前主动激活应用并将窗口置前。
 - 取消“选中即译”自动模拟 `Command+C` 的剪贴板后备读取，避免干扰右键复制/粘贴及用户执行的 `Command+C`、`Command+V`。

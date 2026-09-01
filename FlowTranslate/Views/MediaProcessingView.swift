@@ -191,9 +191,6 @@ struct MediaProcessingView: View {
                 Text("支持 MP4、MOV、M4V、MKV、WebM、MP3、M4A、WAV、AAC、FLAC、OGG")
                     .font(.caption).foregroundStyle(.secondary)
                 Spacer()
-                Button {
-                    UserDefaults.standard.set("媒体处理", forKey: "requestedSettingsCategory"); openSettings()
-                } label: { Image(systemName: "gearshape") }.buttonStyle(.plain).help("媒体处理设置")
             }
             mediaCard
             HStack {
@@ -216,6 +213,13 @@ struct MediaProcessingView: View {
             } else { Text(model.status).font(.caption).foregroundStyle(.secondary) }
             if let error = model.errorMessage { Text(error).font(.callout).foregroundStyle(.red) }
             HStack {
+                Button {
+                    UserDefaults.standard.set("媒体处理", forKey: "requestedSettingsCategory")
+                    openSettings()
+                } label: { Image(systemName: "gearshape") }
+                    .buttonStyle(.plain).help("打开媒体处理设置")
+                Text("· 当前服务：\(state.documentCurrentServiceName)")
+                    .font(.caption).foregroundStyle(.secondary)
                 Button("翻译") { model.translate { try await state.translateDocumentChunk($0, source: $1, target: $2) } }
                     .disabled(model.transcript.isEmpty || model.isWorking)
                 Button("生成摘要") { model.summarize { try await state.summarizeMediaText($0, target: $1) } }

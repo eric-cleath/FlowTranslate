@@ -24,6 +24,7 @@ final class GlobalCaptureService {
     private var progressStartedAt: Date?
     private var selectionMonitor: Any?
     private var instantEscapeMonitor: Any?
+    private var instantApplicationMonitor: NSObjectProtocol?
     private var instantMouseDownPoint = CGPoint.zero
     private var instantDidDrag = false
     private var instantLastUserInput = Date.distantPast
@@ -55,6 +56,10 @@ final class GlobalCaptureService {
     func configureInstantSelection(enabled: Bool) {
         if let selectionMonitor { NSEvent.removeMonitor(selectionMonitor); self.selectionMonitor = nil }
         if let instantEscapeMonitor { NSEvent.removeMonitor(instantEscapeMonitor); self.instantEscapeMonitor = nil }
+        if let instantApplicationMonitor {
+            NSWorkspace.shared.notificationCenter.removeObserver(instantApplicationMonitor)
+            self.instantApplicationMonitor = nil
+        }
         hideInstantSelectionPanels()
         guard enabled else { return }
         selectionMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .leftMouseDragged, .leftMouseUp, .rightMouseDown]) { [weak self] event in
@@ -63,8 +68,19 @@ final class GlobalCaptureService {
         instantEscapeMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
             Task { @MainActor in
                 if self?.instantIsPerformingCompatCopy != true { self?.instantLastUserInput = Date() }
-                if event.keyCode == 53 { self?.hideInstantSelectionPanels() }
+                if self?.instantIsPerformingCompatCopy != true, self?.instantIconPanel != nil {
+                    self?.hideInstantSelectionPanels()
+                } else if event.keyCode == 53 {
+                    self?.hideInstantSelectionPanels()
+                }
             }
+        }
+        instantApplicationMonitor = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didActivateApplicationNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in self?.hideInstantSelectionPanels() }
         }
     }
 
@@ -167,7 +183,9 @@ final class GlobalCaptureService {
         instantLastUserInput = Date()
         switch event.type {
         case .leftMouseDown:
-            instantMouseDownPoint = NSEvent.mouseLocation
+            let point = NSEvent.mouseLocation
+            if let panel = instantIconPanel, !panel.frame.contains(point) { hideInstantSelectionPanels() }
+            instantMouseDownPoint = point
             instantDidDrag = false
         case .leftMouseDragged:
             let point = NSEvent.mouseLocation
@@ -177,7 +195,7 @@ final class GlobalCaptureService {
             let selectionTime = Date()
             handlePossibleInstantSelection(at: NSEvent.mouseLocation, selectionTime: selectionTime)
         case .rightMouseDown:
-            break
+            if let panel = instantIconPanel, !panel.frame.contains(NSEvent.mouseLocation) { hideInstantSelectionPanels() }
         default:
             break
         }

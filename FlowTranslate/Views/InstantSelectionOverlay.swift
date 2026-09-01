@@ -2,6 +2,62 @@ import AppKit
 import Observation
 import SwiftUI
 
+struct CrossWritingProgressView: View {
+    @State private var progressOffset: CGFloat = -120
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(nsImage: MenuBarIcon.image)
+                .resizable()
+                .interpolation(.high)
+                .frame(width: 34, height: 34)
+                .shadow(color: Color.purple.opacity(0.28), radius: 6, y: 2)
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("正在进行跨语写作…")
+                    .font(.system(size: 13.5, weight: .semibold))
+                GeometryReader { geometry in
+                    ZStack(alignment: .leading) {
+                        Capsule().fill(Color.primary.opacity(0.09))
+                        Capsule()
+                            .fill(LinearGradient(
+                                colors: [
+                                    Color(red: 0.05, green: 0.78, blue: 0.98),
+                                    Color(red: 0.50, green: 0.31, blue: 1.0),
+                                    Color(red: 0.05, green: 0.78, blue: 0.98)
+                                ],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            ))
+                            .frame(width: max(72, geometry.size.width * 0.44))
+                            .offset(x: progressOffset)
+                            .shadow(color: Color.blue.opacity(0.25), radius: 3)
+                    }
+                    .clipShape(Capsule())
+                    .onAppear {
+                        progressOffset = -geometry.size.width * 0.45
+                        withAnimation(.linear(duration: 1.15).repeatForever(autoreverses: false)) {
+                            progressOffset = geometry.size.width
+                        }
+                    }
+                }
+                .frame(height: 7)
+            }
+        }
+        .padding(.horizontal, 15)
+        .padding(.vertical, 13)
+        .background(.ultraThinMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 15, style: .continuous)
+            .stroke(LinearGradient(
+                colors: [Color.cyan.opacity(0.35), Color.purple.opacity(0.30)],
+                startPoint: .leading,
+                endPoint: .trailing
+            ), lineWidth: 1))
+        .shadow(color: .black.opacity(0.20), radius: 14, y: 6)
+    }
+}
+
 @MainActor @Observable
 final class InstantSelectionCardModel {
     var sourceText = ""

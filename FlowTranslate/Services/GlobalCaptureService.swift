@@ -121,33 +121,35 @@ final class GlobalCaptureService {
     }
 
     func beginCrossWritingProgress() {
-        endCrossWritingProgress()
+        progressPanel?.orderOut(nil)
+        progressPanel = nil
+        progressSessionID = nil
+        progressStartedAt = nil
         let sessionID = UUID()
         progressSessionID = sessionID
         progressStartedAt = Date()
-        let indicator = NSProgressIndicator(frame: NSRect(x: 14, y: 12, width: 242, height: 8))
-        indicator.style = .bar
-        indicator.isIndeterminate = true
-        indicator.startAnimation(nil)
-        let label = NSTextField(labelWithString: "PallasOwl Translator 正在处理…")
-        label.frame = NSRect(x: 14, y: 29, width: 242, height: 20)
         let mouse = NSEvent.mouseLocation
         let screen = NSScreen.screens.first { $0.frame.contains(mouse) } ?? NSScreen.main
-        let visible = screen?.visibleFrame ?? NSRect(x: mouse.x, y: mouse.y, width: 270, height: 58)
-        let originX = min(max(mouse.x + 14, visible.minX + 8), visible.maxX - 278)
-        let originY = min(max(mouse.y - 66, visible.minY + 8), visible.maxY - 66)
-        let panel = NSPanel(contentRect: NSRect(x: originX, y: originY, width: 270, height: 58),
+        let size = NSSize(width: 310, height: 72)
+        let visible = screen?.visibleFrame ?? NSRect(x: mouse.x, y: mouse.y, width: size.width, height: size.height)
+        let originX = min(max(mouse.x + 14, visible.minX + 8), visible.maxX - size.width - 8)
+        let originY = min(max(mouse.y - size.height - 8, visible.minY + 8), visible.maxY - size.height - 8)
+        let panel = NSPanel(contentRect: NSRect(x: originX, y: originY, width: size.width, height: size.height),
                             styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         panel.isOpaque = false
-        panel.backgroundColor = NSColor.windowBackgroundColor.withAlphaComponent(0.96)
+        panel.backgroundColor = .clear
         panel.hasShadow = true
         panel.level = .statusBar
         panel.hidesOnDeactivate = false
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
         panel.ignoresMouseEvents = true
-        panel.contentView?.addSubview(indicator)
-        panel.contentView?.addSubview(label)
+        panel.contentView = NSHostingView(rootView: CrossWritingProgressView())
+        panel.alphaValue = 0
         panel.orderFrontRegardless()
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.18
+            panel.animator().alphaValue = 1
+        }
         progressPanel = panel
     }
 
@@ -157,7 +159,12 @@ final class GlobalCaptureService {
         let delay = max(0, 0.6 - elapsed)
         DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
             guard self.progressSessionID == sessionID else { return }
-            self.progressPanel?.orderOut(nil)
+            if let panel = self.progressPanel {
+                NSAnimationContext.runAnimationGroup({ context in
+                    context.duration = 0.16
+                    panel.animator().alphaValue = 0
+                }, completionHandler: { panel.orderOut(nil) })
+            }
             self.progressPanel = nil
             self.progressSessionID = nil
             self.progressStartedAt = nil

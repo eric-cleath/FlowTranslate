@@ -90,14 +90,29 @@ struct LiveCaptionView: View {
     }
 
     private func captionArea(_ title: String, text: String, placeholder: String) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        let bottomID = "\(title)-bottom"
+        return VStack(alignment: .leading, spacing: 8) {
             Text(title).font(.headline)
-            ScrollView {
-                Text(text.isEmpty ? placeholder : text)
-                    .foregroundStyle(text.isEmpty ? .tertiary : .primary)
-                    .font(.system(size: appState.editorFontSize)).lineSpacing(appState.editorLineSpacing)
-                    .textSelection(.enabled).frame(maxWidth: .infinity, alignment: .topLeading).padding(12)
-            }.background(.background.secondary, in: RoundedRectangle(cornerRadius: 10))
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(spacing: 0) {
+                        Text(text.isEmpty ? placeholder : text)
+                            .foregroundStyle(text.isEmpty ? .tertiary : .primary)
+                            .font(.system(size: appState.editorFontSize)).lineSpacing(appState.editorLineSpacing)
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .topLeading)
+                            .padding(12)
+                        Color.clear.frame(height: 1).id(bottomID)
+                    }
+                }
+                .onChange(of: text) { _, _ in
+                    withAnimation(.easeOut(duration: 0.18)) {
+                        proxy.scrollTo(bottomID, anchor: .bottom)
+                    }
+                }
+                .onAppear { proxy.scrollTo(bottomID, anchor: .bottom) }
+                .background(.background.secondary, in: RoundedRectangle(cornerRadius: 10))
+            }
         }.frame(minWidth: 300)
     }
 }

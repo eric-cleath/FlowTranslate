@@ -66,7 +66,7 @@ private struct MenuBarContent: View {
         Button("开始/停止实时字幕  \(shortcut(.toggleLiveCaption))") { toggleLiveCaptions() }
         Button("历史记录") { openWindow(id: "history") }
         Divider()
-        Button("设置…") { openSettings() }
+        Button("设置…") { showSettings() }
             .keyboardShortcut(",")
         Divider()
         Button("退出 PallasOwl Translator") { NSApplication.shared.terminate(nil) }
@@ -76,6 +76,20 @@ private struct MenuBarContent: View {
     private func showInput(_ text: String) {
         state.prepareInput(text)
         openWindow(id: "translator")
+        bringWindowToFront(title: "PallasOwl Translator")
+    }
+
+    private func showSettings() {
+        NSApp.activate(ignoringOtherApps: true)
+        openSettings()
+        bringWindowToFront(title: "PallasOwl Translator 设置")
+    }
+
+    private func bringWindowToFront(title: String) {
+        NSApp.activate(ignoringOtherApps: true)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+            NSApp.windows.first(where: { $0.title == title || $0.title.contains(title) })?.makeKeyAndOrderFront(nil)
+        }
     }
 
     private func showLiveCaptions() {

@@ -168,11 +168,10 @@ final class GlobalCaptureService {
             if let text = self.accessibilitySelectedText(), !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 self.presentInstantSelection(text, at: point)
             } else {
-                self.captureSelectedTextSilently { [weak self] text in
-                    guard let self else { return }
-                    if text.isEmpty { self.hideInstantSelectionPanels() }
-                    else { self.presentInstantSelection(text, at: point) }
-                }
+                // “选中即译”不得模拟 Command+C。异步恢复剪贴板会与用户随后执行的
+                // 复制、粘贴或右键菜单竞争；不支持辅助功能选区读取的 App 仍可使用
+                // 用户主动触发的“划词翻译”快捷键。
+                self.hideInstantSelectionPanels()
             }
         }
     }
@@ -187,22 +186,6 @@ final class GlobalCaptureService {
         instantSelectionPoint = point
         if UserDefaults.standard.bool(forKey: "instantSelectionAutomatic") { beginInstantTranslation() }
         else { showInstantTranslateIcon(at: point) }
-    }
-
-    private func captureSelectedTextSilently(completion: @escaping (String) -> Void) {
-        let pasteboard = NSPasteboard.general
-        let previousString = pasteboard.string(forType: .string)
-        let previousChange = pasteboard.changeCount
-        postCommandC()
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.22) {
-            guard pasteboard.changeCount != previousChange,
-                  let text = pasteboard.string(forType: .string), !text.isEmpty else { completion(""); return }
-            completion(text)
-            if let previousString {
-                pasteboard.clearContents()
-                pasteboard.setString(previousString, forType: .string)
-            }
-        }
     }
 
     private func accessibilitySelectedText() -> String? {

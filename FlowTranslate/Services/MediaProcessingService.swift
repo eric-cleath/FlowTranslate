@@ -29,7 +29,62 @@ struct MediaTranscriptionResult: Sendable {
     var text: String { segments.map(\.text).joined(separator: "\n") }
 }
 
+struct WebMediaDownloadResult: Sendable {
+    let mediaURL: URL
+    let subtitleSegments: [MediaSubtitleSegment]
+    let source: String
+}
+
 struct MediaProcessingService: Sendable {
+    static func detectedExecutablePath(named name: String) -> String? {
+        var paths = ["/opt/homebrew/bin/\(name)", "/usr/local/bin/\(name)", "/usr/bin/\(name)"]
+        let fileManager = FileManager.default
+        let pythonRoots = [
+            "/Library/Frameworks/Python.framework/Versions",
+            NSString(string: "~/Library/Python").expandingTildeInPath
+        ]
+        for root in pythonRoots {
+            let versions = (try? fileManager.contentsOfDirectory(atPath: root)) ?? []
+            for version in versions.sorted().reversed() { paths.append("\(root)/\(version)/bin/\(name)") }
+        }
+        return paths.first { fileManager.isExecutableFile(atPath: $0) }
+    }
+
+    func downloadWebMedia(from url: URL, ytDLPPath: String, languageCode: String) async throws -> WebMediaDownloadResult {
+        guard ["http", "https"].contains(url.scheme?.lowercased() ?? "") else {
+            throw MediaProcessingError.processFailed("请输入有效的 http 或 https 视频地址。")
+        }
+        let executable = URL(fileURLWithPath: NSString(string: ytDLPPath).expandingTildeInPath)
+        guard FileManager.default.isExecutableFile(atPath: executable.path) else {
+            throw MediaProcessingError.toolMissing("yt-dlp")
+        }
+        let directory = FileManager.default.temporaryDirectory
+            .appending(path: "PallasOwl-WebMedia")
+            .appending(path: UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let subtitleLanguages = languageCode == "auto" ? "en.*,zh.*,ja.*,ko.*" : "\(whisperLanguageCode(languageCode)).*"
+        let template = directory.appending(path: "%(title).100s-%(id)s.%(ext)s").path
+        let arguments = [
+            "--no-playlist", "--no-progress", "--restrict-filenames",
+            "--write-subs", "--write-auto-subs", "--sub-langs", subtitleLanguages,
+            "--sub-format", "srt/best", "--convert-subs", "srt",
+            "-f", "bestaudio/best", "-o", template, url.absoluteString
+        ]
+        _ = try await run(executable, arguments: arguments)
+        let contents = (try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)) ?? []
+        let subtitleURLs = contents.filter { $0.pathExtension.lowercased() == "srt" }.sorted { $0.lastPathComponent < $1.lastPathComponent }
+        let excluded = Set(["srt", "vtt", "json", "part", "ytdl"])
+        guard let mediaURL = contents.first(where: { !excluded.contains($0.pathExtension.lowercased()) && !$0.hasDirectoryPath }) else {
+            throw MediaProcessingError.unreadableOutput
+        }
+        let segments: [MediaSubtitleSegment]
+        if let subtitleURL = subtitleURLs.first, let content = try? String(contentsOf: subtitleURL, encoding: .utf8) {
+            segments = parseSRT(content)
+        } else { segments = [] }
+        return .init(mediaURL: mediaURL, subtitleSegments: segments,
+                     source: segments.isEmpty ? "网页媒体已载入" : "网页字幕已提取")
+    }
+
     func transcribe(
         url: URL,
         whisperPath: String,
@@ -77,9 +132,7 @@ struct MediaProcessingService: Sendable {
     }
 
     private func executable(named name: String) -> URL? {
-        ["/opt/homebrew/bin/\(name)", "/usr/local/bin/\(name)", "/usr/bin/\(name)"]
-            .map(URL.init(fileURLWithPath:))
-            .first { FileManager.default.isExecutableFile(atPath: $0.path) }
+        Self.detectedExecutablePath(named: name).map(URL.init(fileURLWithPath:))
     }
 
     private func run(_ executable: URL, arguments: [String]) async throws -> String {

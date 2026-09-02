@@ -27,13 +27,14 @@ PallasOwl（原 FlowTranslate）是一款原生 macOS 翻译与 AI 文本处理�
 - 实时字幕拥有独立翻译引擎配置，也可选择与文本翻译共用引擎
 - 可通过全局快捷键打开或直接开始/停止实时字幕
 - 媒体处理支持常见视频与音频文件，优先提取内嵌字幕，无字幕时可调用本地 Whisper 转写
+- 可粘贴常见网站的公开视频地址，通过 yt-dlp 优先提取网页字幕或载入音频后交给 Whisper
 - 媒体转写后可分别执行翻译和摘要，并导出 Obsidian Markdown、TXT、SRT 或 WebVTT
 
 ## 系统要求
 
 - macOS 14 或更高版本
 - Apple Silicon Mac
-- 媒体内嵌字幕提取需要 FFmpeg；本地语音转写需要 Whisper（其他功能不受影响）
+- 媒体内嵌字幕提取需要 FFmpeg；本地语音转写需要 Whisper；网页视频地址需要 yt-dlp（其他功能不受影响）
 - Xcode
 - [XcodeGen](https://github.com/yonaskolb/XcodeGen)
 

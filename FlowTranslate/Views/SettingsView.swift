@@ -87,6 +87,7 @@ struct SettingsView: View {
     @AppStorage("mediaWhisperPath") private var mediaWhisperPath = "/opt/homebrew/bin/whisper"
     @AppStorage("mediaWhisperModel") private var mediaWhisperModel = "small"
     @AppStorage("mediaPreferEmbeddedSubtitles") private var mediaPreferEmbeddedSubtitles = true
+    @AppStorage("mediaYtDLPPath") private var mediaYtDLPPath = MediaProcessingService.detectedExecutablePath(named: "yt-dlp") ?? "/opt/homebrew/bin/yt-dlp"
 
     var body: some View {
         VStack(spacing: 18) {
@@ -149,6 +150,19 @@ struct SettingsView: View {
                             ForEach(["tiny", "base", "small", "medium", "large-v3", "turbo"], id: \.self) { Text($0).tag($0) }
                         }.labelsHidden().frame(width: 170)
                     }
+                    VStack(alignment: .leading, spacing: 7) {
+                        Text("yt-dlp 程序位置").fontWeight(.medium)
+                        Text("用于载入常见网站的公开视频；登录、地区限制或 DRM 视频可能不受支持。")
+                            .font(.caption).foregroundStyle(.secondary)
+                        HStack {
+                            TextField("/opt/homebrew/bin/yt-dlp", text: $mediaYtDLPPath)
+                            Button("选择…") { chooseYtDLPExecutable() }
+                        }
+                        HStack(spacing: 5) {
+                            Image(systemName: FileManager.default.isExecutableFile(atPath: NSString(string: mediaYtDLPPath).expandingTildeInPath) ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                            Text(FileManager.default.isExecutableFile(atPath: NSString(string: mediaYtDLPPath).expandingTildeInPath) ? "已找到可执行程序" : "当前路径不可用；请安装 yt-dlp 后选择其命令文件")
+                        }.font(.caption).foregroundStyle(FileManager.default.isExecutableFile(atPath: NSString(string: mediaYtDLPPath).expandingTildeInPath) ? .green : .orange)
+                    }.padding(.vertical, 14).overlay(alignment: .bottom) { Divider() }
                     settingRow("媒体翻译引擎", "首版与“文档翻译”的当前引擎配置共用") {
                         Button("查看文档翻译设置") { category = .document }
                     }
@@ -169,6 +183,13 @@ struct SettingsView: View {
         panel.canChooseFiles = true; panel.canChooseDirectories = false; panel.allowsMultipleSelection = false
         panel.message = "选择 Whisper 可执行程序"
         if panel.runModal() == .OK, let url = panel.url { mediaWhisperPath = url.path }
+    }
+
+    private func chooseYtDLPExecutable() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true; panel.canChooseDirectories = false; panel.allowsMultipleSelection = false
+        panel.message = "选择 yt-dlp 可执行程序"
+        if panel.runModal() == .OK, let url = panel.url { mediaYtDLPPath = url.path }
     }
 
     private var liveCaptionSettings: some View {

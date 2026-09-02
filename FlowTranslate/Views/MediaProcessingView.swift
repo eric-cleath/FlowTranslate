@@ -15,6 +15,7 @@ enum MediaExportFormat: String, CaseIterable, Identifiable {
 @MainActor @Observable
 final class MediaProcessingModel {
     var fileURL: URL?
+    var webpageAddress = ""
     var sourceLanguage = Language.supported[0]
     var targetLanguage = Language.supported.first(where: { $0.code == "zh-Hans" }) ?? Language.supported[1]
     var segments: [MediaSubtitleSegment] = []
@@ -41,6 +42,34 @@ final class MediaProcessingModel {
         fileURL = url; segments = []; transcript = ""; translation = ""; summary = ""
         sourceDescription = ""; errorMessage = nil; progress = 0; status = "文件已载入，可以开始转写"
         Task { duration = await service.mediaDuration(url: url) }
+    }
+
+    func pasteWebAddress() {
+        if let value = NSPasteboard.general.string(forType: .string) { webpageAddress = value.trimmingCharacters(in: .whitespacesAndNewlines) }
+    }
+
+    func loadWebMedia() {
+        let value = webpageAddress.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let url = URL(string: value) else { errorMessage = "请输入有效的网页视频地址。"; return }
+        task?.cancel(); isWorking = true; progress = 0.08; errorMessage = nil
+        segments = []; transcript = ""; translation = ""; summary = ""; sourceDescription = ""
+        status = "正在解析网页视频和字幕…"
+        let ytDLPPath = UserDefaults.standard.string(forKey: "mediaYtDLPPath")
+            ?? MediaProcessingService.detectedExecutablePath(named: "yt-dlp") ?? "/opt/homebrew/bin/yt-dlp"
+        task = Task {
+            do {
+                let result = try await service.downloadWebMedia(from: url, ytDLPPath: ytDLPPath, languageCode: sourceLanguage.code)
+                guard !Task.isCancelled else { return }
+                fileURL = result.mediaURL; sourceDescription = result.source
+                segments = result.subtitleSegments; transcript = result.subtitleSegments.map(\.text).joined(separator: "\n")
+                duration = await service.mediaDuration(url: result.mediaURL)
+                progress = 1
+                if transcript.isEmpty { status = "网页媒体载入成功；未找到字幕，请开始 Whisper 转写" }
+                else { status = "网页字幕提取完成 · \(segments.count) 段"; UsageMetrics.increment(.mediaTranscription) }
+            } catch is CancellationError { status = "已取消" }
+            catch { errorMessage = friendlyWebError(error); status = "网页媒体载入失败"; progress = 0 }
+            isWorking = false
+        }
     }
 
     func transcribe() {
@@ -176,6 +205,19 @@ final class MediaProcessingModel {
         if !current.isEmpty { values.append(current) }
         return values
     }
+
+    private func friendlyWebError(_ error: Error) -> String {
+        let message = error.localizedDescription
+        if message.localizedCaseInsensitiveContains("yt-dlp") { return "未找到 yt-dlp，请在“设置 → 媒体处理”中检查程序位置。" }
+        if message.localizedCaseInsensitiveContains("drm") { return "该视频受到 DRM 保护，无法载入。可以改用实时字幕。" }
+        if message.localizedCaseInsensitiveContains("cloudflare") || message.localizedCaseInsensitiveContains("anti-bot") {
+            return "该网站启用了反自动化保护，当前无法直接载入。可以改用实时字幕。"
+        }
+        if message.localizedCaseInsensitiveContains("login") || message.localizedCaseInsensitiveContains("sign in") {
+            return "该视频需要登录，当前版本仅处理可公开访问的视频。"
+        }
+        return message.split(separator: "\n").suffix(4).joined(separator: "\n")
+    }
 }
 
 struct MediaProcessingView: View {
@@ -190,6 +232,15 @@ struct MediaProcessingView: View {
                 Text("支持 MP4、MOV、M4V、MKV、WebM、MP3、M4A、WAV、AAC、FLAC、OGG")
                     .font(.caption).foregroundStyle(.secondary)
                 Spacer()
+            }
+            HStack(spacing: 8) {
+                Image(systemName: "link")
+                TextField("粘贴公开视频网页地址…", text: $model.webpageAddress)
+                    .textFieldStyle(.roundedBorder)
+                Button("粘贴") { model.pasteWebAddress() }
+                Button("载入地址") { model.loadWebMedia() }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(model.webpageAddress.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || model.isWorking)
             }
             mediaCard
             HStack {

@@ -272,9 +272,10 @@ private final class LiveAudioCapture: NSObject, @unchecked Sendable, SCStreamOut
         let request = SFSpeechAudioBufferRecognitionRequest()
         request.shouldReportPartialResults = true
         request.addsPunctuation = true
+        request.taskHint = .dictation
         self.request = request
         task = recognizer.recognitionTask(with: request) { result, error in
-            if let result { update(result.bestTranscription.formattedString, result.isFinal) }
+            if let result { update(Self.punctuatedText(from: result.bestTranscription), result.isFinal) }
             if error != nil { /* A stopped stream commonly finishes with a cancellation error. */ }
         }
         if source == .microphone { try await startMicrophone(request: request) }
@@ -291,6 +292,31 @@ private final class LiveAudioCapture: NSObject, @unchecked Sendable, SCStreamOut
         stream = nil
         request = nil
         task = nil
+    }
+
+    /// Some English Speech recognizers only add punctuation to a final result.
+    /// Live captions mostly receive partial results, so use acoustic pauses as a
+    /// local fallback while preserving any punctuation supplied by macOS.
+    private static func punctuatedText(from transcription: SFTranscription) -> String {
+        let formatted = transcription.formattedString.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !formatted.isEmpty,
+              formatted.range(of: #"[.!?,;:。！？，；：]"#, options: .regularExpression) == nil,
+              transcription.segments.count > 1 else { return formatted }
+
+        var output = ""
+        for (index, segment) in transcription.segments.enumerated() {
+            let word = segment.substring.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !word.isEmpty else { continue }
+            if !output.isEmpty { output += " " }
+            output += word
+            guard index + 1 < transcription.segments.count else { continue }
+            let next = transcription.segments[index + 1]
+            let pause = next.timestamp - (segment.timestamp + segment.duration)
+            if pause >= 1.05 { output += "." }
+            else if pause >= 0.52 { output += "," }
+        }
+        if !output.hasSuffix("."), !output.hasSuffix("?"), !output.hasSuffix("!") { output += "." }
+        return output
     }
 
     @MainActor

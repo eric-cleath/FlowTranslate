@@ -5,10 +5,15 @@ import SwiftUI
 struct PallasOwlApp: App {
     @State private var state = AppState()
 
+    private var mainWindowTitle: String {
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "—"
+        return "PallasOwl Translator · v\(version)"
+    }
+
     init() { GlobalCaptureService.shared.start() }
 
     var body: some Scene {
-        Window("PallasOwl Translator", id: "translator") {
+        Window(mainWindowTitle, id: "translator") {
             TranslatorView().environment(state).environment(\.locale, state.locale)
         }
         .defaultSize(width: 820, height: 560)

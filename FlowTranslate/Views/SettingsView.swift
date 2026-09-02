@@ -17,7 +17,7 @@ func bringPallasOwlSettingsWindowToFront() {
 }
 
 private enum SettingsCategory: String, CaseIterable, Identifiable {
-    case general = "通用设置", translation = "文本翻译", writing = "AI 文本处理", document = "文档翻译", liveCaption = "实时字幕", media = "媒体处理", shortcuts = "快捷键", about = "关于"
+    case general = "通用设置", translation = "文本翻译", writing = "AI 文本处理", document = "文档翻译", liveCaption = "实时字幕", media = "媒体处理", shortcuts = "快捷键", about = "关于", help = "帮助"
     var id: Self { self }
 }
 
@@ -82,12 +82,14 @@ struct SettingsView: View {
     @State private var showsDocumentEngines = false
     @State private var showsLiveCaptionEngines = false
     @State private var showsVoicePicker = false
+    @State private var voicePickerLanguageCode = "en"
     @AppStorage("instantSelectionEnabled") private var instantSelectionEnabled = false
     @AppStorage("instantSelectionAutomatic") private var instantSelectionAutomatic = false
     @AppStorage("mediaWhisperPath") private var mediaWhisperPath = "/opt/homebrew/bin/whisper"
     @AppStorage("mediaWhisperModel") private var mediaWhisperModel = "small"
     @AppStorage("mediaPreferEmbeddedSubtitles") private var mediaPreferEmbeddedSubtitles = true
     @AppStorage("mediaYtDLPPath") private var mediaYtDLPPath = MediaProcessingService.detectedExecutablePath(named: "yt-dlp") ?? "/opt/homebrew/bin/yt-dlp"
+    @AppStorage("mediaSummaryLevel") private var mediaSummaryLevel = MediaSummaryLevel.standard.rawValue
 
     var body: some View {
         VStack(spacing: 18) {
@@ -103,12 +105,16 @@ struct SettingsView: View {
                 case .media: mediaSettings
                 case .shortcuts: shortcutSettings
                 case .about: aboutSettings
+                case .help: helpSettings
                 }
             }.frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .padding(22).frame(minWidth: 950, minHeight: 640)
-        .sheet(isPresented: $showsVoicePicker) { VoicePickerSheet(isPresented: $showsVoicePicker) }
+        .sheet(isPresented: $showsVoicePicker) {
+            VoicePickerSheet(isPresented: $showsVoicePicker, initialLanguageCode: voicePickerLanguageCode)
+        }
         .onAppear {
+            updateSettingsWindowTitle()
             if let requested = UserDefaults.standard.string(forKey: "requestedSettingsCategory"), let target = SettingsCategory(rawValue: requested) {
                 category = target
                 UserDefaults.standard.removeObject(forKey: "requestedSettingsCategory")
@@ -118,6 +124,7 @@ struct SettingsView: View {
             selectedDocumentID = state.addedDocumentServices.first?.id ?? ""
             selectedLiveCaptionID = state.addedLiveCaptionServices.first?.id ?? ""
         }
+        .onChange(of: state.appLanguage) { _, _ in updateSettingsWindowTitle() }
         .onDisappear {
             // The Settings scene is reused by macOS. Reset the page so opening
             // Settings from the main window does not remain on the last page.
@@ -149,6 +156,15 @@ struct SettingsView: View {
                         Picker("", selection: $mediaWhisperModel) {
                             ForEach(["tiny", "base", "small", "medium", "large-v3", "turbo"], id: \.self) { Text($0).tag($0) }
                         }.labelsHidden().frame(width: 170)
+                    }
+                    settingRow("摘要级别", "控制媒体摘要的篇幅、结构和保留细节；默认使用标准") {
+                        Picker("", selection: $mediaSummaryLevel) {
+                            ForEach(MediaSummaryLevel.allCases) { level in
+                                Text(LocalizedStringKey(level.title)).tag(level.rawValue)
+                            }
+                        }
+                        .labelsHidden()
+                        .frame(width: 170)
                     }
                     VStack(alignment: .leading, spacing: 7) {
                         Text("yt-dlp 程序位置").fontWeight(.medium)
@@ -593,22 +609,7 @@ struct SettingsView: View {
                 }
                 settingRow("正文字号", "调整原文和结果区域的字体大小") { slider(Binding(get: { state.editorFontSize }, set: { state.editorFontSize = $0 }), 14...22) }
                 settingRow("正文行距", "调整长段落的阅读间距") { slider(Binding(get: { state.editorLineSpacing }, set: { state.editorLineSpacing = $0 }), 2...10) }
-                settingRow("朗读语音", "来自 macOS 系统语音；自动模式会按文本语言选择") {
-                    VStack(alignment: .trailing, spacing: 6) {
-                        Button {
-                            showsVoicePicker = true
-                        } label: {
-                            Text(state.voiceIdentifiersByLanguage.isEmpty ? "各语言均自动选择" : "设置语音…")
-                                .frame(width: 210, alignment: .leading)
-                        }
-                        if !state.voiceIdentifiersByLanguage.isEmpty {
-                            Text(configuredVoiceDetails)
-                                .font(.caption).foregroundStyle(.secondary)
-                                .multilineTextAlignment(.trailing)
-                                .frame(maxWidth: 480, alignment: .trailing)
-                        }
-                    }
-                }
+                speechVoiceSettings
                 Spacer()
             }.padding(12)
         }
@@ -616,7 +617,19 @@ struct SettingsView: View {
 
     private var aboutSettings: some View {
         GroupBox {
-            VStack(spacing: 18) {
+            VStack(spacing: 0) {
+                HStack {
+                    header("关于", "版本、使用统计与项目信息")
+                    Spacer()
+                    Button {
+                        category = .general
+                    } label: {
+                        Label("返回通用设置", systemImage: "chevron.backward")
+                    }
+                }
+                Divider()
+
+                VStack(spacing: 18) {
                 Image(nsImage: NSApplication.shared.applicationIconImage)
                     .resizable().scaledToFit().frame(width: 92, height: 92)
                 VStack(spacing: 6) {
@@ -656,12 +669,176 @@ struct SettingsView: View {
                 Spacer()
                 Text("MIT License  ·  Copyright © 2026 PallasOwl")
                     .font(.caption).foregroundStyle(.tertiary)
-            }.padding(28).frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+                .padding(28)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+            .padding(12)
         }
+    }
+
+    private var helpSettings: some View {
+        GroupBox {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    header("功能帮助", "了解各模式的用途；以后增加的新模式也会在这里说明")
+                    Divider()
+
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 265), spacing: 12)], spacing: 12) {
+                        helpCard("翻译", icon: "character.book.closed", status: "可使用",
+                                 description: "通过输入、划词或截图取得原文，使用 Apple 系统翻译、DeepL 或已配置的 AI 引擎进行翻译。")
+                        helpCard("润色", icon: "wand.and.stars", status: "可使用",
+                                 description: "在不改变原文语言和含义的前提下，修正语法、标点、措辞和表达流畅度。")
+                        helpCard("跨语写作", icon: "pencil.and.outline", status: "可使用",
+                                 description: "把一种语言表达的意图改写为自然的目标语言，并可在其他 App 的输入位置原位替换。")
+                        helpCard("文档", icon: "doc.text", status: "可使用",
+                                 description: "导入 PDF、Word、TXT、Markdown 或图片，先检查提取原文，再翻译并导出 Markdown 或纯文本。")
+                        helpCard("实时字幕", icon: "captions.bubble", status: "可使用",
+                                 description: "持续识别麦克风、系统或指定 App 的声音，显示实时原文和译文，并支持记录与导出。")
+                        helpCard("媒体", icon: "film.stack", status: "可使用",
+                                 description: "处理本地音视频或网页视频地址，提取字幕或调用 Whisper 转写，并可继续翻译、摘要和导出。")
+                        helpCard("频道追踪", icon: "dot.radiowaves.left.and.right", status: "建设中",
+                                 description: "未来用于关注 YouTube 频道的新视频，自动取得原文、生成分级摘要并整理到内容收件箱。")
+                    }
+                    .padding(.vertical, 14)
+
+                    Text("提示：具体引擎、快捷键、语音、Whisper 和媒体工具位置，请在本窗口对应的设置分类中配置。")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .padding(.vertical, 10)
+                }
+                .padding(12)
+            }
+        }
+    }
+
+    private func helpCard(_ title: String, icon: String, status: String, description: String) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 9) {
+                Image(systemName: icon)
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(Color.accentColor)
+                    .frame(width: 26)
+                Text(title).font(.headline)
+                Spacer()
+                Text(status)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(status == "建设中" ? Color.orange : Color.green)
+                    .padding(.horizontal, 8).padding(.vertical, 4)
+                    .background((status == "建设中" ? Color.orange : Color.green).opacity(0.1), in: Capsule())
+            }
+            Text(description)
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, minHeight: 118, alignment: .topLeading)
+        .background(.background.secondary, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(Color.primary.opacity(0.07)))
     }
 
     private var appVersion: String { Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "—" }
     private var buildNumber: String { Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "—" }
+
+    private func updateSettingsWindowTitle() {
+        DispatchQueue.main.async {
+            let languageCode = state.locale.language.languageCode?.identifier ?? "en"
+            let suffix: String
+            switch languageCode {
+            case "zh": suffix = "设置"
+            case "fr": suffix = "Réglages"
+            case "ja": suffix = "設定"
+            default: suffix = "Settings"
+            }
+            let settingsWords = ["settings", "设置", "réglages", "設定"]
+            NSApp.windows.first(where: { window in
+                settingsWords.contains { window.title.localizedCaseInsensitiveContains($0) }
+            })?.title = "PallasOwl Translator \(suffix)"
+        }
+    }
+
+    private var speechVoiceSettings: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("朗读语音").fontWeight(.medium)
+
+            VStack(spacing: 0) {
+                ForEach(configuredVoiceRows, id: \.language.code) { row in
+                    HStack(spacing: 12) {
+                        Text(LocalizedStringKey(row.language.name))
+                            .frame(width: 180, alignment: .leading)
+                        Spacer()
+                        Button {
+                            voicePickerLanguageCode = row.language.code
+                            showsVoicePicker = true
+                        } label: {
+                            HStack(spacing: 7) {
+                                Text("\(row.voice.name) · \(row.voice.language)")
+                                    .lineLimit(1)
+                                Image(systemName: "chevron.up.chevron.down")
+                                    .font(.caption2)
+                            }
+                        }
+                        .buttonStyle(.plain)
+                        Button(state.isSpeaking ? "停止" : "试听") {
+                            state.toggleSpeechPreview(identifier: row.voice.identifier, languageCode: row.language.code)
+                        }
+                        Button(role: .destructive) {
+                            state.setSpeechVoice("", for: row.language.code)
+                        } label: {
+                            Image(systemName: "trash")
+                        }
+                        .help("删除该语言的固定语音")
+                    }
+                    .padding(.vertical, 9)
+                    .overlay(alignment: .bottom) { Divider() }
+                }
+
+                Button {
+                    voicePickerLanguageCode = firstUnconfiguredVoiceLanguageCode
+                    showsVoicePicker = true
+                } label: {
+                    Label("新增语音", systemImage: "plus.circle.fill")
+                }
+                .padding(.vertical, 9)
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                if !configuredVoiceDetails.isEmpty {
+                    Divider()
+                    Text(configuredVoiceDetails)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .padding(.vertical, 9)
+                }
+
+                Divider()
+                Text("自动模式会按正文语言选择；可在 macOS 系统设置中下载更多增强语音。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .padding(.vertical, 9)
+            }
+            .padding(.horizontal, 10)
+            .background(.background.secondary, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        }
+        .padding(.vertical, 14)
+        .overlay(alignment: .bottom) { Divider() }
+    }
+
+    private var configuredVoiceRows: [(language: Language, voice: AVSpeechSynthesisVoice)] {
+        Language.supported.filter { $0.code != "auto" }.compactMap { language in
+            guard let identifier = state.voiceIdentifiersByLanguage[language.code],
+                  let voice = state.availableVoices.first(where: { $0.identifier == identifier }) else { return nil }
+            return (language, voice)
+        }
+    }
+
+    private var firstUnconfiguredVoiceLanguageCode: String {
+        Language.supported.first(where: { language in
+            language.code != "auto" && state.voiceIdentifiersByLanguage[language.code] == nil
+        })?.code ?? "en"
+    }
 
     private func slider(_ value: Binding<Double>, _ range: ClosedRange<Double>) -> some View {
         HStack { Slider(value: Binding(get: { value.wrappedValue }, set: { value.wrappedValue = $0; try? state.saveSettings() }), in: range, step: 1).frame(width: 180); Text("\(Int(value.wrappedValue))") }
@@ -675,7 +852,8 @@ struct SettingsView: View {
         Language.supported.filter { $0.code != "auto" }.compactMap { language in
             guard let identifier = state.voiceIdentifiersByLanguage[language.code] else { return nil }
             let voiceName = state.availableVoices.first(where: { $0.identifier == identifier })?.name ?? "语音不可用"
-            return "\(language.name)：\(voiceName)"
+            let languageName = String(localized: String.LocalizationValue(language.name), locale: state.locale)
+            return "\(languageName): \(voiceName)"
         }.joined(separator: "　·　")
     }
     private func shortcutEditor(_ action: ShortcutAction) -> some View {
@@ -697,6 +875,7 @@ struct SettingsView: View {
 private struct VoicePickerSheet: View {
     @Environment(AppState.self) private var state
     @Binding var isPresented: Bool
+    let initialLanguageCode: String
     @State private var searchText = ""
     @State private var languageCode = "en"
 
@@ -751,7 +930,9 @@ private struct VoicePickerSheet: View {
                 }.padding(.vertical, 3)
             }
             Text("显示 \(voices.count) 个语音；更多语音可在 macOS 系统设置中下载。").font(.caption).foregroundStyle(.secondary)
-        }.padding(18).frame(width: 570, height: 560)
+        }
+        .padding(18).frame(width: 570, height: 560)
+        .onAppear { languageCode = initialLanguageCode }
     }
 
     private func voiceMatchesSelectedLanguage(_ voice: AVSpeechSynthesisVoice) -> Bool {

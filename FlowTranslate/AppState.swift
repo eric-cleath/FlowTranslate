@@ -224,7 +224,7 @@ final class AppState {
         isSummarizing = false
     }
 
-    func summarizeMediaText(_ text: String, target: Language) async throws -> String {
+    func summarizeMediaText(_ text: String, target: Language, level: MediaSummaryLevel) async throws -> String {
         await reloadSecretsWithRetry(scope: writingUsesTranslationEngine ? .translation : .writing)
         let sharesTranslationAI = writingUsesTranslationEngine
         if sharesTranslationAI && resolvedTranslationProvider() != .ai { throw ServiceError.invalidConfiguration }
@@ -238,7 +238,8 @@ final class AppState {
         let key = storedKey.isEmpty && preset == .ollama ? "ollama" : storedKey
         guard let url = URL(string: endpoint), !key.isEmpty, !model.isEmpty else { throw ServiceError.invalidConfiguration }
         return try await service.perform(text: text, mode: .summarize, source: target, target: target,
-                                         configuration: .init(endpoint: url, apiKey: key, model: model))
+                                         configuration: .init(endpoint: url, apiKey: key, model: model),
+                                         instructionOverride: "Summarize the user text in \(target.name). \(level.instruction) Return only the summary.")
     }
 
     func copyOutput() {

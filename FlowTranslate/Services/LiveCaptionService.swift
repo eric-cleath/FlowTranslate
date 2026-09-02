@@ -197,7 +197,7 @@ final class LiveCaptionModel {
     }
 
     private func updateHostWindowLevel() {
-        let window = NSApp.windows.first { $0.title == "PallasOwl Translator" }
+        let window = NSApp.windows.first { $0.title.contains("PallasOwl Translator") }
         window?.level = isRunning && hostWindowVisible ? .floating : .normal
     }
 

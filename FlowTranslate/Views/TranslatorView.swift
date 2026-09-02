@@ -7,19 +7,23 @@ struct TranslatorView: View {
     @State private var showsDocumentMode = false
     @State private var showsLiveCaptionMode = false
     @State private var showsMediaMode = false
+    @State private var showsChannelTrackingMode = false
 
     var body: some View {
         @Bindable var state = state
         VStack(spacing: 0) {
-            ModeNavigationBar(selection: Binding(get: { showsMediaMode ? "__media" : (showsLiveCaptionMode ? "__live" : (showsDocumentMode ? "__document" : state.mode.rawValue)) }, set: { value in
-                if value == "__document" { if !showsDocumentMode { state.clearWorkspace() }; showsLiveCaptionMode = false; showsMediaMode = false; showsDocumentMode = true }
-                else if value == "__live" { state.clearWorkspace(); showsDocumentMode = false; showsMediaMode = false; showsLiveCaptionMode = true }
-                else if value == "__media" { state.clearWorkspace(); showsDocumentMode = false; showsLiveCaptionMode = false; showsMediaMode = true }
-                else if let mode = WorkMode(rawValue: value) { showsDocumentMode = false; showsLiveCaptionMode = false; showsMediaMode = false; state.switchMode(to: mode) }
+            ModeNavigationBar(selection: Binding(get: { showsChannelTrackingMode ? "__tracking" : (showsMediaMode ? "__media" : (showsLiveCaptionMode ? "__live" : (showsDocumentMode ? "__document" : state.mode.rawValue))) }, set: { value in
+                if value == "__document" { if !showsDocumentMode { state.clearWorkspace() }; showsLiveCaptionMode = false; showsMediaMode = false; showsChannelTrackingMode = false; showsDocumentMode = true }
+                else if value == "__live" { state.clearWorkspace(); showsDocumentMode = false; showsMediaMode = false; showsChannelTrackingMode = false; showsLiveCaptionMode = true }
+                else if value == "__media" { state.clearWorkspace(); showsDocumentMode = false; showsLiveCaptionMode = false; showsChannelTrackingMode = false; showsMediaMode = true }
+                else if value == "__tracking" { state.clearWorkspace(); showsDocumentMode = false; showsLiveCaptionMode = false; showsMediaMode = false; showsChannelTrackingMode = true }
+                else if let mode = WorkMode(rawValue: value) { showsDocumentMode = false; showsLiveCaptionMode = false; showsMediaMode = false; showsChannelTrackingMode = false; state.switchMode(to: mode) }
             }))
             .padding(.horizontal).padding(.vertical, 12)
 
-            if showsLiveCaptionMode {
+            if showsChannelTrackingMode {
+                ChannelTrackingPlaceholderView()
+            } else if showsLiveCaptionMode {
                 LiveCaptionView()
             } else if showsMediaMode {
                 MediaProcessingView()
@@ -127,10 +131,26 @@ struct TranslatorView: View {
         let capture = GlobalCaptureService.shared
         capture.onInput = { showTranslator(text: "", autoTranslate: false) }
         capture.onSelection = { showTranslator(text: $0, autoTranslate: true) }
-        capture.onScreenshot = { showTranslator(text: $0, autoTranslate: true) }
+        capture.onScreenshotProcessing = {
+            showsDocumentMode = false
+            showsLiveCaptionMode = false
+            showsMediaMode = false
+            showsChannelTrackingMode = false
+            state.prepareInput("", activate: false)
+            state.isWorking = true
+            state.processingStatus = "正在识别截图文字…"
+            openWindow(id: "translator")
+            bringTranslatorWindowToFront()
+        }
+        capture.onScreenshot = {
+            state.isWorking = false
+            state.processingStatus = ""
+            showTranslator(text: $0, autoTranslate: true)
+        }
         capture.onCrossLanguageWriting = { text in
             showsDocumentMode = false
             showsMediaMode = false
+            showsChannelTrackingMode = false
             state.prepareInput(text, mode: .crossLanguageWriting, activate: false)
             capture.beginCrossWritingProgress()
             Task {
@@ -155,6 +175,8 @@ struct TranslatorView: View {
         capture.onOpenInstantSelectionMain = { showTranslator(text: $0, autoTranslate: true) }
         capture.onSpeakInstantSelection = { state.speak($0, language: state.targetLanguage) }
         capture.onError = {
+            state.isWorking = false
+            state.processingStatus = ""
             state.prepareInput("", activate: false)
             state.errorMessage = $0
             showTranslator(text: nil, autoTranslate: false)
@@ -164,6 +186,7 @@ struct TranslatorView: View {
     private func showLiveCaption(start: Bool) {
         showsDocumentMode = false
         showsMediaMode = false
+        showsChannelTrackingMode = false
         showsLiveCaptionMode = true
         openWindow(id: "translator")
         bringTranslatorWindowToFront()
@@ -184,6 +207,7 @@ struct TranslatorView: View {
         if requested == "__live" {
             showsDocumentMode = false
             showsMediaMode = false
+            showsChannelTrackingMode = false
             showsLiveCaptionMode = true
         }
     }
@@ -191,7 +215,7 @@ struct TranslatorView: View {
     private func bringTranslatorWindowToFront() {
         NSApp.activate(ignoringOtherApps: true)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
-            NSApp.windows.first(where: { $0.title == "PallasOwl Translator" })?.makeKeyAndOrderFront(nil)
+            NSApp.windows.first(where: { $0.title.contains("PallasOwl Translator") })?.makeKeyAndOrderFront(nil)
         }
     }
 
@@ -199,11 +223,12 @@ struct TranslatorView: View {
         showsDocumentMode = false
         showsLiveCaptionMode = false
         showsMediaMode = false
+        showsChannelTrackingMode = false
         if let text { state.prepareInput(text) }
         openWindow(id: "translator")
         NSApp.activate(ignoringOtherApps: true)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            NSApp.windows.first(where: { $0.title == "PallasOwl Translator" })?.makeKeyAndOrderFront(nil)
+            NSApp.windows.first(where: { $0.title.contains("PallasOwl Translator") })?.makeKeyAndOrderFront(nil)
         }
         if autoTranslate {
             Task { await state.run() }
@@ -269,7 +294,8 @@ private struct ModeNavigationBar: View {
         .init(id: WorkMode.crossLanguageWriting.rawValue, title: WorkMode.crossLanguageWriting.rawValue, icon: WorkMode.crossLanguageWriting.systemIcon),
         .init(id: "__document", title: "文档", icon: "doc.text"),
         .init(id: "__live", title: "实时字幕", icon: "captions.bubble"),
-        .init(id: "__media", title: "媒体", icon: "film.stack")
+        .init(id: "__media", title: "媒体", icon: "film.stack"),
+        .init(id: "__tracking", title: "频道追踪", icon: "dot.radiowaves.left.and.right")
     ]
 
     var body: some View {
@@ -287,7 +313,7 @@ private struct ModeNavigationBar: View {
                         .font(.system(size: 12.5, weight: selection == item.id ? .semibold : .medium))
                         .foregroundStyle(selection == item.id ? Color.white : Color.primary.opacity(0.78))
                         .padding(.horizontal, 13).padding(.vertical, 7)
-                        .frame(minWidth: item.id == "__live" ? 92 : 74)
+                        .frame(minWidth: ["__live", "__tracking"].contains(item.id) ? 92 : 74)
                         .background {
                             if selection == item.id {
                                 Capsule(style: .continuous)

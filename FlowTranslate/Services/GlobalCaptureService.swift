@@ -9,6 +9,7 @@ final class GlobalCaptureService {
     static let shared = GlobalCaptureService()
     var onInput: (() -> Void)?
     var onSelection: ((String) -> Void)?
+    var onScreenshotProcessing: (() -> Void)?
     var onScreenshot: ((String) -> Void)?
     var onCrossLanguageWriting: ((String) -> Void)?
     var onOpenLiveCaption: (() -> Void)?
@@ -410,6 +411,7 @@ final class GlobalCaptureService {
         process.terminationHandler = { _ in
             defer { try? FileManager.default.removeItem(at: fileURL) }
             guard let image = NSImage(contentsOf: fileURL), let tiff = image.tiffRepresentation, let bitmap = NSBitmapImageRep(data: tiff), let cgImage = bitmap.cgImage else { return }
+            Task { @MainActor in self.onScreenshotProcessing?() }
             let request = VNRecognizeTextRequest { request, _ in
                 let observations = request.results as? [VNRecognizedTextObservation] ?? []
                 let text = Self.mergeRecognizedLines(observations)

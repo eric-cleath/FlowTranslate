@@ -12,6 +12,34 @@ enum MediaExportFormat: String, CaseIterable, Identifiable {
     var fileExtension: String { switch self { case .markdown: "md"; case .text: "txt"; case .srt: "srt"; case .vtt: "vtt" } }
 }
 
+enum MediaSummaryLevel: String, CaseIterable, Identifiable {
+    case brief, standard, detailed, timeline, studyNotes
+    var id: Self { self }
+    var title: String {
+        switch self {
+        case .brief: "简短"
+        case .standard: "标准"
+        case .detailed: "详细"
+        case .timeline: "时间轴"
+        case .studyNotes: "学习笔记"
+        }
+    }
+    var instruction: String {
+        switch self {
+        case .brief:
+            "Return one concise paragraph containing only the central conclusion."
+        case .standard:
+            "Return a structured summary with an overview, main points, and key facts or figures."
+        case .detailed:
+            "Return a detailed structured summary. Preserve important people, figures, evidence, arguments, and conclusions. Use clear Markdown headings and do not over-compress."
+        case .timeline:
+            "Return a chronological Markdown summary organized by the timestamps present in the text. Identify chapters or topic changes and retain important facts."
+        case .studyNotes:
+            "Return study notes in Markdown with key ideas, important terms, facts, conclusions, and claims that should be verified."
+        }
+    }
+}
+
 @MainActor @Observable
 final class MediaProcessingModel {
     var fileURL: URL?
@@ -74,6 +102,7 @@ final class MediaProcessingModel {
 
     func transcribe() {
         guard let fileURL else { return }
+        let startedAt = Date()
         task?.cancel(); isWorking = true; progress = 0.08; errorMessage = nil
         status = "正在检查内嵌字幕…"
         let whisperPath = UserDefaults.standard.string(forKey: "mediaWhisperPath") ?? "/opt/homebrew/bin/whisper"
@@ -87,7 +116,8 @@ final class MediaProcessingModel {
                                                           languageCode: sourceLanguage.code, preferEmbeddedSubtitles: preferEmbedded)
                 guard !Task.isCancelled else { return }
                 segments = result.segments; transcript = result.text; sourceDescription = result.source
-                translation = ""; summary = ""; progress = 1; status = "转写完成 · \(result.source) · \(result.segments.count) 段"
+                translation = ""; summary = ""; progress = 1
+                status = "转写完成 · \(result.source) · \(result.segments.count) 段 · 用时 \(elapsedText(since: startedAt))"
                 UsageMetrics.increment(.mediaTranscription)
             } catch is CancellationError { status = "已取消" }
             catch { errorMessage = error.localizedDescription; status = "处理失败"; progress = 0 }
@@ -116,27 +146,34 @@ final class MediaProcessingModel {
         }
     }
 
-    func summarize(using handler: @escaping (String, Language) async throws -> String) {
-        let text = translation.isEmpty ? transcript : translation
+    func summarize(using handler: @escaping (String, Language, MediaSummaryLevel) async throws -> String) {
+        let level = MediaSummaryLevel(rawValue: UserDefaults.standard.string(forKey: "mediaSummaryLevel") ?? "standard") ?? .standard
+        let text: String
+        if level == .timeline, !segments.isEmpty {
+            text = segments.map { "[\(clock($0.start))] \($0.text)" }.joined(separator: "\n")
+        } else {
+            text = translation.isEmpty ? transcript : translation
+        }
         guard !text.isEmpty else { return }
+        let startedAt = Date()
         task?.cancel(); isWorking = true; errorMessage = nil; summary = ""; progress = 0.05; status = "正在生成摘要…"
         let chunks = chunk(text, limit: 9_000)
         task = Task {
             do {
                 if chunks.count == 1 {
-                    summary = try await handler(text, targetLanguage)
+                    summary = try await handler(text, targetLanguage, level)
                 } else {
                     var partialSummaries: [String] = []
                     for (index, value) in chunks.enumerated() {
                         guard !Task.isCancelled else { throw CancellationError() }
                         status = "正在总结第 \(index + 1)/\(chunks.count) 段…"
-                        partialSummaries.append(try await handler(value, targetLanguage))
+                        partialSummaries.append(try await handler(value, targetLanguage, level))
                         progress = 0.8 * Double(index + 1) / Double(chunks.count)
                     }
                     status = "正在合并分段摘要…"
-                    summary = try await handler(partialSummaries.joined(separator: "\n\n"), targetLanguage)
+                    summary = try await handler(partialSummaries.joined(separator: "\n\n"), targetLanguage, level)
                 }
-                progress = 1; status = "摘要生成完成"; UsageMetrics.increment(.mediaSummary)
+                progress = 1; status = "摘要生成完成 · 用时 \(elapsedText(since: startedAt))"; UsageMetrics.increment(.mediaSummary)
             } catch is CancellationError { status = "已取消" }
             catch { errorMessage = error.localizedDescription; status = "摘要生成失败" }
             isWorking = false
@@ -185,6 +222,13 @@ final class MediaProcessingModel {
         let milliseconds = Int((time * 1000).rounded())
         return String(format: "%02d:%02d:%02d%@%03d", milliseconds / 3_600_000, (milliseconds / 60_000) % 60,
                       (milliseconds / 1000) % 60, separator, milliseconds % 1000)
+    }
+
+    private func elapsedText(since start: Date) -> String {
+        let seconds = max(0, Int(Date().timeIntervalSince(start).rounded()))
+        if seconds >= 3600 { return "\(seconds / 3600)小时\((seconds % 3600) / 60)分\(seconds % 60)秒" }
+        if seconds >= 60 { return "\(seconds / 60)分\(seconds % 60)秒" }
+        return "\(seconds)秒"
     }
 
     private func clock(_ time: TimeInterval) -> String { String(format: "%02d:%02d:%02d", Int(time) / 3600, (Int(time) / 60) % 60, Int(time) % 60) }
@@ -273,7 +317,7 @@ struct MediaProcessingView: View {
                     .foregroundStyle(.secondary)
                 Button("翻译") { model.translate { try await state.translateDocumentChunk($0, source: $1, target: $2) } }
                     .disabled(model.transcript.isEmpty || model.isWorking)
-                Button("生成摘要") { model.summarize { try await state.summarizeMediaText($0, target: $1) } }
+                Button("生成摘要") { model.summarize { try await state.summarizeMediaText($0, target: $1, level: $2) } }
                     .disabled(model.transcript.isEmpty || model.isWorking)
                 Spacer()
                 Picker("导出格式", selection: $model.exportFormat) { ForEach(MediaExportFormat.allCases) { Text($0.rawValue).tag($0) } }

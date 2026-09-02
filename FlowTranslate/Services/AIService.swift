@@ -67,7 +67,8 @@ actor AIService {
         mode: WorkMode,
         source: Language,
         target: Language,
-        configuration: AIConfiguration
+        configuration: AIConfiguration,
+        instructionOverride: String? = nil
     ) async throws -> String {
         var request = URLRequest(url: configuration.endpoint)
         request.httpMethod = "POST"
@@ -75,17 +76,18 @@ actor AIService {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("Bearer \(configuration.apiKey)", forHTTPHeaderField: "Authorization")
 
-        let instruction: String
+        let defaultInstruction: String
         switch mode {
         case .translate:
-            instruction = "Translate the user text from \(source.name) to \(target.name). Return only the translation, preserving formatting."
+            defaultInstruction = "Translate the user text from \(source.name) to \(target.name). Return only the translation, preserving formatting."
         case .polish:
-            instruction = "Edit and improve the user text while strictly preserving its original language. Correct grammar, spelling, punctuation, clarity, and flow. Do not translate it, add new facts, or change its meaning. Preserve formatting and return only the improved text."
+            defaultInstruction = "Edit and improve the user text while strictly preserving its original language. Correct grammar, spelling, punctuation, clarity, and flow. Do not translate it, add new facts, or change its meaning. Preserve formatting and return only the improved text."
         case .crossLanguageWriting:
-            instruction = "The user will express an intent in \(source.name). Rewrite it as natural, idiomatic, well-structured \(target.name) suitable for direct use. Do not translate literally. Return only the final text."
+            defaultInstruction = "The user will express an intent in \(source.name). Rewrite it as natural, idiomatic, well-structured \(target.name) suitable for direct use. Do not translate literally. Return only the final text."
         case .summarize:
-            instruction = "Summarize the user text concisely in \(target.name). Return only the summary."
+            defaultInstruction = "Summarize the user text concisely in \(target.name). Return only the summary."
         }
+        let instruction = instructionOverride ?? defaultInstruction
 
         let payload = ChatRequest(
             model: configuration.model,

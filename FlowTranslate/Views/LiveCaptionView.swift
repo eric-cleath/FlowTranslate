@@ -45,6 +45,7 @@ struct LiveCaptionView: View {
                 Button {
                     UserDefaults.standard.set("实时字幕", forKey: "requestedSettingsCategory")
                     openSettings()
+                    bringPallasOwlSettingsWindowToFront()
                 } label: { Image(systemName: "gearshape").font(.system(size: 16, weight: .semibold)) }.buttonStyle(.plain).help("实时字幕设置")
                 Circle().fill(model.isRunning ? Color.green : Color.secondary).frame(width: 7, height: 7)
                 Text(model.status).foregroundStyle(.secondary)

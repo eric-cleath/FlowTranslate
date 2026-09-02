@@ -235,7 +235,7 @@ struct DocumentTranslationView: View {
             } else if !model.status.isEmpty { Text(model.status).font(.caption).foregroundStyle(.secondary) }
             if let error = model.errorMessage { Text(error).font(.callout).foregroundStyle(.red) }
             HStack {
-                Button { UserDefaults.standard.set("文档翻译", forKey: "requestedSettingsCategory"); openSettings() } label: { Image(systemName: "gearshape").font(.system(size: 16, weight: .semibold)) }
+                Button { UserDefaults.standard.set("文档翻译", forKey: "requestedSettingsCategory"); openSettings(); bringPallasOwlSettingsWindowToFront() } label: { Image(systemName: "gearshape").font(.system(size: 16, weight: .semibold)) }
                     .buttonStyle(.plain).help("打开文档翻译设置")
                 Text("· 当前服务：\(state.documentCurrentServiceName)")
                     .foregroundStyle(.secondary)

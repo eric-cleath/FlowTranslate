@@ -2,6 +2,20 @@ import AppKit
 import AVFoundation
 import SwiftUI
 
+@MainActor
+func bringPallasOwlSettingsWindowToFront() {
+    NSApp.activate(ignoringOtherApps: true)
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+        let settingsWords = ["settings", "设置", "réglages", "設定"]
+        let window = NSApp.windows.first { candidate in
+            let title = candidate.title.lowercased()
+            return settingsWords.contains { title.localizedCaseInsensitiveContains($0) }
+        }
+        window?.makeKeyAndOrderFront(nil)
+        window?.orderFrontRegardless()
+    }
+}
+
 private enum SettingsCategory: String, CaseIterable, Identifiable {
     case general = "通用设置", translation = "文本翻译", writing = "AI 文本处理", document = "文档翻译", liveCaption = "实时字幕", media = "媒体处理", shortcuts = "快捷键", about = "关于"
     var id: Self { self }

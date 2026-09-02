@@ -215,6 +215,7 @@ struct MediaProcessingView: View {
                 Button {
                     UserDefaults.standard.set("媒体处理", forKey: "requestedSettingsCategory")
                     openSettings()
+                    bringPallasOwlSettingsWindowToFront()
                 } label: { Image(systemName: "gearshape").font(.system(size: 16, weight: .semibold)) }
                     .buttonStyle(.plain).help("打开媒体处理设置")
                 Text("· 当前服务：\(state.documentCurrentServiceName)")

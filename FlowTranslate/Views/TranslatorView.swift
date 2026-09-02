@@ -82,7 +82,7 @@ struct TranslatorView: View {
             }
 
             HStack {
-                Button { openSettings() } label: { Image(systemName: "gearshape").font(.system(size: 16, weight: .semibold)) }
+                Button { openSettings(); bringPallasOwlSettingsWindowToFront() } label: { Image(systemName: "gearshape").font(.system(size: 16, weight: .semibold)) }
                     .buttonStyle(.plain).help("打开设置")
                 Text("↩︎ 翻译")
                     .foregroundStyle(.secondary)

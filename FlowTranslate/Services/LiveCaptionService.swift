@@ -49,22 +49,27 @@ final class LiveCaptionModel {
 
     private let capture = LiveAudioCapture()
     private var translationTask: Task<Void, Never>?
+    private var sessionID = UUID()
     var translateHandler: ((String, Language, Language) async throws -> String)?
 
     func start() async {
         guard !isRunning else { return }
+        translationTask?.cancel()
+        translationTask = nil
         saveSettings()
         errorMessage = nil
         sourceText = ""
         translatedText = ""
         detectedLanguageName = ""
         status = "正在申请权限…"
+        let currentSession = UUID()
+        sessionID = currentSession
         do {
             let recognitionLanguage = sourceLanguage.code == "auto"
                 ? (Locale.current.language.languageCode?.identifier ?? "en")
                 : sourceLanguage.code
             try await capture.start(source: audioSource, applicationBundleID: selectedApplicationBundleID, languageCode: recognitionLanguage) { [weak self] text, isFinal in
-                Task { @MainActor in self?.receive(text, isFinal: isFinal) }
+                Task { @MainActor in self?.receive(text, isFinal: isFinal, sessionID: currentSession) }
             }
             isRunning = true
             UsageMetrics.increment(.liveCaption)
@@ -79,8 +84,11 @@ final class LiveCaptionModel {
 
     func stop() {
         translationTask?.cancel()
+        translationTask = nil
+        sessionID = UUID()
         capture.stop()
         isRunning = false
+        errorMessage = nil
         status = sourceText.isEmpty ? "已停止" : "转写已停止"
         updateHostWindowLevel()
         LiveCaptionPanelController.shared.hide()
@@ -193,19 +201,21 @@ final class LiveCaptionModel {
         window?.level = isRunning && hostWindowVisible ? .floating : .normal
     }
 
-    private func receive(_ text: String, isFinal: Bool) {
+    private func receive(_ text: String, isFinal: Bool, sessionID: UUID) {
+        guard self.sessionID == sessionID else { return }
         let cleaned = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleaned.isEmpty else { return }
         sourceText = cleaned
         translationTask?.cancel()
         translationTask = Task { [weak self] in
             try? await Task.sleep(for: .milliseconds(isFinal ? 120 : 650))
-            guard !Task.isCancelled, let self else { return }
-            await self.translateCurrent(cleaned)
+            guard !Task.isCancelled, let self, self.sessionID == sessionID else { return }
+            await self.translateCurrent(cleaned, sessionID: sessionID)
         }
     }
 
-    private func translateCurrent(_ text: String) async {
+    private func translateCurrent(_ text: String, sessionID: UUID) async {
+        guard self.sessionID == sessionID else { return }
         let detected = detectedLanguage(for: text)
         detectedLanguageName = detected?.name ?? "识别中"
         if skipTranslationForTargetLanguage, sameBaseLanguage(detected?.code, targetLanguage.code) {
@@ -220,9 +230,12 @@ final class LiveCaptionModel {
         status = "正在翻译…"
         do {
             let source = detected ?? sourceLanguage
-            translatedText = try await translateHandler(text, source, targetLanguage)
+            let result = try await translateHandler(text, source, targetLanguage)
+            guard self.sessionID == sessionID else { return }
+            translatedText = result
             status = isRunning ? "实时字幕运行中" : "翻译完成"
         } catch {
+            if Task.isCancelled || (error as? URLError)?.code == .cancelled { return }
             errorMessage = error.localizedDescription
             status = "翻译失败，转写仍在继续"
         }

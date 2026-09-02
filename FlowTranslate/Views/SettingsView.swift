@@ -559,12 +559,18 @@ struct SettingsView: View {
                 settingRow("正文字号", "调整原文和结果区域的字体大小") { slider(Binding(get: { state.editorFontSize }, set: { state.editorFontSize = $0 }), 14...22) }
                 settingRow("正文行距", "调整长段落的阅读间距") { slider(Binding(get: { state.editorLineSpacing }, set: { state.editorLineSpacing = $0 }), 2...10) }
                 settingRow("朗读语音", "来自 macOS 系统语音；自动模式会按文本语言选择") {
-                    HStack {
+                    VStack(alignment: .trailing, spacing: 6) {
                         Button {
                             showsVoicePicker = true
                         } label: {
-                            Text(state.voiceIdentifiersByLanguage.isEmpty ? "各语言均自动选择" : "已配置 \(state.voiceIdentifiersByLanguage.count) 种语言")
+                            Text(state.voiceIdentifiersByLanguage.isEmpty ? "各语言均自动选择" : "设置语音…")
                                 .frame(width: 210, alignment: .leading)
+                        }
+                        if !state.voiceIdentifiersByLanguage.isEmpty {
+                            Text(configuredVoiceDetails)
+                                .font(.caption).foregroundStyle(.secondary)
+                                .multilineTextAlignment(.trailing)
+                                .frame(maxWidth: 480, alignment: .trailing)
                         }
                     }
                 }
@@ -629,6 +635,14 @@ struct SettingsView: View {
     private func header(_ title: String, _ subtitle: String) -> some View { VStack(alignment: .leading, spacing: 5) { Text(title).font(.title3.bold()); Text(subtitle).font(.caption).foregroundStyle(.secondary) }.padding(.vertical, 10) }
     private func field<C: View>(_ title: String, _ help: String, @ViewBuilder content: () -> C) -> some View { VStack(alignment: .leading, spacing: 7) { Text(title).fontWeight(.medium); content(); Text(help).font(.caption).foregroundStyle(.secondary) }.padding(.vertical, 12).overlay(alignment: .bottom) { Divider() } }
     private func settingRow<C: View>(_ title: String, _ help: String, @ViewBuilder content: () -> C) -> some View { HStack { VStack(alignment: .leading, spacing: 4) { Text(title).fontWeight(.medium); Text(help).font(.caption).foregroundStyle(.secondary) }; Spacer(); content() }.padding(.vertical, 14).overlay(alignment: .bottom) { Divider() } }
+
+    private var configuredVoiceDetails: String {
+        Language.supported.filter { $0.code != "auto" }.compactMap { language in
+            guard let identifier = state.voiceIdentifiersByLanguage[language.code] else { return nil }
+            let voiceName = state.availableVoices.first(where: { $0.identifier == identifier })?.name ?? "语音不可用"
+            return "\(language.name)：\(voiceName)"
+        }.joined(separator: "　·　")
+    }
     private func shortcutEditor(_ action: ShortcutAction) -> some View {
         let config = state.shortcuts[action] ?? .defaultValue(for: action)
         return HStack {

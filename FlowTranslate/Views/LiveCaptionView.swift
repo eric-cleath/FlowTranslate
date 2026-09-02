@@ -45,7 +45,7 @@ struct LiveCaptionView: View {
                 Button {
                     UserDefaults.standard.set("实时字幕", forKey: "requestedSettingsCategory")
                     openSettings()
-                } label: { Image(systemName: "gearshape") }.buttonStyle(.plain).help("实时字幕设置")
+                } label: { Image(systemName: "gearshape").font(.system(size: 16, weight: .semibold)) }.buttonStyle(.plain).help("实时字幕设置")
                 Circle().fill(model.isRunning ? Color.green : Color.secondary).frame(width: 7, height: 7)
                 Text(model.status).foregroundStyle(.secondary)
                 if !model.detectedLanguageName.isEmpty { Text("· 检测语言：\(model.detectedLanguageName)").foregroundStyle(.secondary) }
@@ -56,7 +56,7 @@ struct LiveCaptionView: View {
                 Button("导出结果") { model.export() }
                     .disabled(model.outputStyle == .translated ? model.translatedText.isEmpty : (model.sourceText.isEmpty && model.translatedText.isEmpty))
                 Button("清空记录") { model.clear() }.disabled(model.sourceText.isEmpty && model.translatedText.isEmpty)
-            }.font(.caption)
+            }.font(.callout)
         }
         .padding(.horizontal).padding(.bottom)
         .onAppear { model.setHostWindowVisible(true) }

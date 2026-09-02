@@ -215,10 +215,10 @@ struct MediaProcessingView: View {
                 Button {
                     UserDefaults.standard.set("媒体处理", forKey: "requestedSettingsCategory")
                     openSettings()
-                } label: { Image(systemName: "gearshape") }
+                } label: { Image(systemName: "gearshape").font(.system(size: 16, weight: .semibold)) }
                     .buttonStyle(.plain).help("打开媒体处理设置")
                 Text("· 当前服务：\(state.documentCurrentServiceName)")
-                    .font(.caption).foregroundStyle(.secondary)
+                    .foregroundStyle(.secondary)
                 Button("翻译") { model.translate { try await state.translateDocumentChunk($0, source: $1, target: $2) } }
                     .disabled(model.transcript.isEmpty || model.isWorking)
                 Button("生成摘要") { model.summarize { try await state.summarizeMediaText($0, target: $1) } }
@@ -227,7 +227,7 @@ struct MediaProcessingView: View {
                 Picker("导出格式", selection: $model.exportFormat) { ForEach(MediaExportFormat.allCases) { Text($0.rawValue).tag($0) } }
                     .labelsHidden().frame(width: 165)
                 Button("导出结果") { model.export() }.disabled(model.transcript.isEmpty || model.isWorking)
-            }
+            }.font(.callout)
         }.padding(.horizontal).padding(.bottom)
     }
 

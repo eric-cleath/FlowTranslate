@@ -82,18 +82,17 @@ struct TranslatorView: View {
             }
 
             HStack {
-                Button { openSettings() } label: { Image(systemName: "gearshape") }
+                Button { openSettings() } label: { Image(systemName: "gearshape").font(.system(size: 16, weight: .semibold)) }
                     .buttonStyle(.plain).help("打开设置")
                 Text("↩︎ 翻译")
-                    .font(.caption)
                     .foregroundStyle(.secondary)
                 if state.mode == .translate {
                     Text("· 当前服务：\(state.translationProvider.rawValue)")
-                        .font(.caption)
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
             }
+            .font(.callout)
             .padding()
             }
         }
@@ -247,7 +246,7 @@ struct TranslatorView: View {
                         .buttonStyle(.plain).disabled(text.wrappedValue.isEmpty || state.isWorking || state.isSummarizing)
                 }
                 Spacer()
-            }.font(.caption).foregroundStyle(.secondary)
+            }.font(.callout).foregroundStyle(.secondary)
         }
         .frame(minWidth: 300)
     }

@@ -235,16 +235,16 @@ struct DocumentTranslationView: View {
             } else if !model.status.isEmpty { Text(model.status).font(.caption).foregroundStyle(.secondary) }
             if let error = model.errorMessage { Text(error).font(.callout).foregroundStyle(.red) }
             HStack {
-                Button { UserDefaults.standard.set("文档翻译", forKey: "requestedSettingsCategory"); openSettings() } label: { Image(systemName: "gearshape") }
+                Button { UserDefaults.standard.set("文档翻译", forKey: "requestedSettingsCategory"); openSettings() } label: { Image(systemName: "gearshape").font(.system(size: 16, weight: .semibold)) }
                     .buttonStyle(.plain).help("打开文档翻译设置")
                 Text("· 当前服务：\(state.documentCurrentServiceName)")
-                    .font(.caption).foregroundStyle(.secondary)
+                    .foregroundStyle(.secondary)
                 if model.isWorking { Button("暂停", action: model.cancel) }
                 Spacer()
                 Picker("导出格式", selection: $model.exportFormat) { ForEach(DocumentExportFormat.allCases) { Text($0.rawValue).tag($0) } }.labelsHidden().frame(width: 160)
                 Button("导出结果", action: model.export).disabled(model.resultText.isEmpty || model.isWorking)
                 Button("开始翻译") { model.translate(using: state) }.buttonStyle(.borderedProminent).disabled(model.sourceText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || model.isWorking)
-            }
+            }.font(.callout)
         }.padding(embedded ? 12 : 18).frame(minWidth: embedded ? 720 : 900, minHeight: embedded ? 440 : 620)
         .onChange(of: model.sourceText) { _, value in
             if value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { model.clearTranslationOutputIfSourceIsEmpty() }

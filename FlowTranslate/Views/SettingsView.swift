@@ -135,6 +135,9 @@ struct SettingsView: View {
             selectedLiveCaptionID = state.addedLiveCaptionServices.first?.id ?? ""
         }
         .onChange(of: state.appLanguage) { _, _ in updateSettingsWindowTitle() }
+        .onReceive(NotificationCenter.default.publisher(for: UserDefaults.didChangeNotification)) { _ in
+            applyRequestedSettingsCategory()
+        }
         .onDisappear {
             // The Settings scene is reused by macOS. Reset the page so opening
             // Settings from the main window does not remain on the last page.
@@ -596,42 +599,45 @@ struct SettingsView: View {
 
     private var generalSettings: some View {
         GroupBox {
-            VStack(alignment: .leading, spacing: 0) {
-                header("通用设置", "控制启动方式、界面语言和阅读体验"); Divider()
-                settingRow("开机自动启动", "登录 macOS 后自动启动 PallasOwl Translator") {
-                    Toggle("", isOn: Binding(get: { state.launchAtLogin }, set: { state.setLaunchAtLogin($0) })).labelsHidden().toggleStyle(.switch)
-                }
-                settingRow("界面语言", "默认跟随 macOS；切换后界面立即刷新") {
-                    Picker("", selection: Binding(get: { state.appLanguage }, set: { state.setAppLanguage($0) })) { ForEach(AppLanguage.allCases) { Text($0.displayName).tag($0) } }
-                        .labelsHidden().frame(width: 180)
-                }
-                settingRow("选中即译", "在其他 App 中用鼠标选中文字后显示翻译入口；不影响现有划词翻译") {
-                    Toggle("", isOn: $instantSelectionEnabled).labelsHidden().toggleStyle(.switch)
-                        .onChange(of: instantSelectionEnabled) { _, enabled in GlobalCaptureService.shared.configureInstantSelection(enabled: enabled) }
-                }
-                if instantSelectionEnabled {
-                    settingRow("选中即译方式", "默认先显示 T 图标，可改为选中后直接翻译") {
-                        Picker("", selection: $instantSelectionAutomatic) {
-                            Text("显示 T 图标").tag(false)
-                            Text("自动显示结果").tag(true)
-                        }.labelsHidden().frame(width: 170)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    header("通用设置", "控制启动方式、界面语言和阅读体验"); Divider()
+                    settingRow("开机自动启动", "登录 macOS 后自动启动 PallasOwl Translator") {
+                        Toggle("", isOn: Binding(get: { state.launchAtLogin }, set: { state.setLaunchAtLogin($0) })).labelsHidden().toggleStyle(.switch)
                     }
+                    settingRow("界面语言", "默认跟随 macOS；切换后界面立即刷新") {
+                        Picker("", selection: Binding(get: { state.appLanguage }, set: { state.setAppLanguage($0) })) { ForEach(AppLanguage.allCases) { Text($0.displayName).tag($0) } }
+                            .labelsHidden().frame(width: 180)
+                    }
+                    settingRow("选中即译", "在其他 App 中用鼠标选中文字后显示翻译入口；不影响现有划词翻译") {
+                        Toggle("", isOn: $instantSelectionEnabled).labelsHidden().toggleStyle(.switch)
+                            .onChange(of: instantSelectionEnabled) { _, enabled in GlobalCaptureService.shared.configureInstantSelection(enabled: enabled) }
+                    }
+                    if instantSelectionEnabled {
+                        settingRow("选中即译方式", "默认先显示 T 图标，可改为选中后直接翻译") {
+                            Picker("", selection: $instantSelectionAutomatic) {
+                                Text("显示 T 图标").tag(false)
+                                Text("自动显示结果").tag(true)
+                            }.labelsHidden().frame(width: 170)
+                        }
+                    }
+                    settingRow("正文字号", "调整原文和结果区域的字体大小") { slider(Binding(get: { state.editorFontSize }, set: { state.editorFontSize = $0 }), 14...22) }
+                    settingRow("正文行距", "调整长段落的阅读间距") { slider(Binding(get: { state.editorLineSpacing }, set: { state.editorLineSpacing = $0 }), 2...10) }
+                    speechVoiceSettings
                 }
-                settingRow("正文字号", "调整原文和结果区域的字体大小") { slider(Binding(get: { state.editorFontSize }, set: { state.editorFontSize = $0 }), 14...22) }
-                settingRow("正文行距", "调整长段落的阅读间距") { slider(Binding(get: { state.editorLineSpacing }, set: { state.editorLineSpacing = $0 }), 2...10) }
-                speechVoiceSettings
-                Spacer()
-            }.padding(12)
+                .padding(12)
+            }
         }
     }
 
     private var aboutSettings: some View {
         GroupBox {
-            VStack(spacing: 0) {
-                HStack { header("关于", "版本、使用统计与项目信息"); Spacer() }
-                Divider()
+            ScrollView {
+                VStack(spacing: 0) {
+                    HStack { header("关于", "版本、使用统计与项目信息"); Spacer() }
+                    Divider()
 
-                VStack(spacing: 18) {
+                    VStack(spacing: 18) {
                 Image(nsImage: NSApplication.shared.applicationIconImage)
                     .resizable().scaledToFit().frame(width: 92, height: 92)
                 VStack(spacing: 6) {
@@ -682,11 +688,12 @@ struct SettingsView: View {
                 Spacer()
                 Text("MIT License  ·  Copyright © 2026 PallasOwl")
                     .font(.caption).foregroundStyle(.tertiary)
+                    }
+                    .padding(28)
+                    .frame(maxWidth: .infinity)
                 }
-                .padding(28)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .padding(12)
             }
-            .padding(12)
         }
     }
 
@@ -769,6 +776,13 @@ struct SettingsView: View {
                 settingsWords.contains { window.title.localizedCaseInsensitiveContains($0) }
             })?.title = "PallasOwl Translator \(suffix)"
         }
+    }
+
+    private func applyRequestedSettingsCategory() {
+        guard let requested = UserDefaults.standard.string(forKey: "requestedSettingsCategory"),
+              let target = SettingsCategory(rawValue: requested) else { return }
+        category = target
+        UserDefaults.standard.removeObject(forKey: "requestedSettingsCategory")
     }
 
     private func returnToMainWindow() {

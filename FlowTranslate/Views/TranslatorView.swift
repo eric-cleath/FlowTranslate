@@ -131,7 +131,9 @@ struct TranslatorView: View {
         let capture = GlobalCaptureService.shared
         capture.onInput = { showTranslator(text: "", autoTranslate: false) }
         capture.onSelection = { showTranslator(text: $0, autoTranslate: true) }
-        capture.onScreenshot = { showTranslator(text: $0, autoTranslate: true) }
+        capture.onScreenshot = { text, diagnosticID in
+            showTranslator(text: text, autoTranslate: true, diagnosticID: diagnosticID)
+        }
         capture.onCrossLanguageWriting = { text in
             showsDocumentMode = false
             showsMediaMode = false
@@ -197,31 +199,55 @@ struct TranslatorView: View {
         }
     }
 
-    private func bringTranslatorWindowToFront(attempt: Int = 0) {
+    private func bringTranslatorWindowToFront(attempt: Int = 0, diagnosticID: UUID? = nil) {
         NSApp.activate(ignoringOtherApps: true)
         let retryDelays: [TimeInterval] = [0.02, 0.08, 0.15, 0.25, 0.4, 0.6]
         let delay = retryDelays[min(attempt, retryDelays.count - 1)]
         DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
             if let window = translatorWindow() {
+                if let diagnosticID {
+                    DiagnosticLogger.shared.record(session: diagnosticID, event: "window.found", details: [
+                        "attempt": "\(attempt + 1)",
+                        "miniaturized": "\(window.isMiniaturized)",
+                        "visible": "\(window.isVisible)"
+                    ])
+                }
                 if window.isMiniaturized { window.deminiaturize(nil) }
                 window.orderFrontRegardless()
                 window.makeKey()
             } else if attempt + 1 < retryDelays.count {
-                bringTranslatorWindowToFront(attempt: attempt + 1)
+                if let diagnosticID { DiagnosticLogger.shared.record(session: diagnosticID, event: "window.retry", details: ["attempt": "\(attempt + 1)"]) }
+                bringTranslatorWindowToFront(attempt: attempt + 1, diagnosticID: diagnosticID)
+            } else if let diagnosticID {
+                DiagnosticLogger.shared.record(session: diagnosticID, event: "window.not-found", details: ["attempts": "\(retryDelays.count)"])
             }
         }
     }
 
-    private func showTranslator(text: String?, autoTranslate: Bool) {
+    private func showTranslator(text: String?, autoTranslate: Bool, diagnosticID: UUID? = nil) {
         showsDocumentMode = false
         showsLiveCaptionMode = false
         showsMediaMode = false
         showsChannelTrackingMode = false
-        if let text { state.prepareInput(text) }
+        if let text {
+            state.prepareInput(text)
+            if let diagnosticID { DiagnosticLogger.shared.record(session: diagnosticID, event: "ui.input.prepared", details: ["characters": "\(text.count)"]) }
+        }
         openWindow(id: "translator")
-        bringTranslatorWindowToFront()
+        if let diagnosticID { DiagnosticLogger.shared.record(session: diagnosticID, event: "window.open.requested") }
+        bringTranslatorWindowToFront(diagnosticID: diagnosticID)
         if autoTranslate {
-            Task { await state.run() }
+            Task {
+                let translationStartedAt = Date()
+                if let diagnosticID { DiagnosticLogger.shared.record(session: diagnosticID, event: "translation.started") }
+                await state.run()
+                if let diagnosticID {
+                    DiagnosticLogger.shared.record(session: diagnosticID, event: "translation.completed", details: [
+                        "elapsed_ms": "\(Int((Date().timeIntervalSince(translationStartedAt) * 1_000).rounded()))",
+                        "result": state.errorMessage == nil && !state.output.isEmpty ? "success" : "failure"
+                    ])
+                }
+            }
         }
     }
 

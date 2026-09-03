@@ -10,7 +10,7 @@ final class GlobalCaptureService {
     static let shared = GlobalCaptureService()
     var onInput: (() -> Void)?
     var onSelection: ((String) -> Void)?
-    var onScreenshot: ((String) -> Void)?
+    var onScreenshot: ((String, UUID) -> Void)?
     var onCrossLanguageWriting: ((String) -> Void)?
     var onOpenLiveCaption: (() -> Void)?
     var onToggleLiveCaption: (() -> Void)?
@@ -400,12 +400,17 @@ final class GlobalCaptureService {
     }
 
     func captureScreenshot() {
+        let diagnosticID = UUID()
+        let startedAt = Date()
+        DiagnosticLogger.shared.record(session: diagnosticID, event: "shortcut.received")
         guard CGPreflightScreenCaptureAccess() else {
+            DiagnosticLogger.shared.record(session: diagnosticID, event: "permission.denied")
             CGRequestScreenCaptureAccess()
             onError?("需要屏幕录制权限。授权后请重启 PallasOwl Translator，再按截图翻译快捷键。")
             return
         }
         guard screenshotProcess == nil else {
+            DiagnosticLogger.shared.record(session: diagnosticID, event: "capture.rejected", details: ["reason": "already-running"])
             onError?("截图工具仍在运行，请先完成或取消当前截图。")
             return
         }
@@ -420,18 +425,41 @@ final class GlobalCaptureService {
                 if self.screenshotProcess === process { self.screenshotProcess = nil }
             }
             // screencapture returns a non-zero status when the user cancels.
-            guard process.terminationStatus == 0 else { return }
+            let captureElapsed = Date().timeIntervalSince(startedAt)
+            guard process.terminationStatus == 0 else {
+                DiagnosticLogger.shared.record(session: diagnosticID, event: "capture.cancelled", details: ["elapsed_ms": Self.milliseconds(captureElapsed)])
+                return
+            }
+            DiagnosticLogger.shared.record(session: diagnosticID, event: "capture.completed", details: ["elapsed_ms": Self.milliseconds(captureElapsed)])
+            let decodeStartedAt = Date()
             guard let source = CGImageSourceCreateWithURL(fileURL as CFURL, nil),
                   let cgImage = CGImageSourceCreateImageAtIndex(source, 0, nil) else {
+                DiagnosticLogger.shared.record(session: diagnosticID, event: "image.decode.failed")
                 Task { @MainActor in self.onError?("无法读取截图图像，请重新截图。") }
                 return
             }
+            DiagnosticLogger.shared.record(session: diagnosticID, event: "image.decoded", details: [
+                "elapsed_ms": Self.milliseconds(Date().timeIntervalSince(decodeStartedAt)),
+                "pixels": "\(cgImage.width)x\(cgImage.height)"
+            ])
+            let ocrStartedAt = Date()
             let request = VNRecognizeTextRequest { request, _ in
                 let observations = request.results as? [VNRecognizedTextObservation] ?? []
                 let text = Self.mergeRecognizedLines(observations)
+                DiagnosticLogger.shared.record(session: diagnosticID, event: "ocr.completed", details: [
+                    "characters": "\(text.count)",
+                    "elapsed_ms": Self.milliseconds(Date().timeIntervalSince(ocrStartedAt)),
+                    "lines": "\(observations.count)"
+                ])
                 Task { @MainActor in
-                    if text.isEmpty { self.onError?("截图中没有识别到文字。") }
-                    else { UsageMetrics.increment(.screenshotTranslation); self.onScreenshot?(text) }
+                    if text.isEmpty {
+                        DiagnosticLogger.shared.record(session: diagnosticID, event: "result.empty")
+                        self.onError?("截图中没有识别到文字。")
+                    } else {
+                        DiagnosticLogger.shared.record(session: diagnosticID, event: "result.dispatched")
+                        UsageMetrics.increment(.screenshotTranslation)
+                        self.onScreenshot?(text, diagnosticID)
+                    }
                 }
             }
             request.recognitionLevel = .accurate
@@ -441,14 +469,23 @@ final class GlobalCaptureService {
             do {
                 try VNImageRequestHandler(cgImage: cgImage).perform([request])
             } catch {
+                DiagnosticLogger.shared.record(session: diagnosticID, event: "ocr.failed", details: ["error": error.localizedDescription])
                 Task { @MainActor in self.onError?("截图文字识别失败：\(error.localizedDescription)") }
             }
         }
-        do { try process.run() }
+        do {
+            try process.run()
+            DiagnosticLogger.shared.record(session: diagnosticID, event: "capture.started")
+        }
         catch {
             screenshotProcess = nil
+            DiagnosticLogger.shared.record(session: diagnosticID, event: "capture.start.failed", details: ["error": error.localizedDescription])
             onError?("无法启动系统截图：\(error.localizedDescription)")
         }
+    }
+
+    private nonisolated static func milliseconds(_ interval: TimeInterval) -> String {
+        String(Int((interval * 1_000).rounded()))
     }
 
     private func register(id: UInt32, key: UInt32, modifiers: UInt32) {

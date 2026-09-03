@@ -668,6 +668,17 @@ struct SettingsView: View {
                         Label("查看最新版本", systemImage: "arrow.down.circle")
                     }
                 }
+                Divider()
+                HStack(spacing: 12) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("本地诊断记录").font(.headline)
+                        Text("记录截图、OCR、窗口和翻译耗时；不保存截图、原文、译文或密钥。")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Button("清除记录") { DiagnosticLogger.shared.clear() }
+                    Button("在 Finder 中显示") { DiagnosticLogger.shared.revealInFinder() }
+                }
                 Spacer()
                 Text("MIT License  ·  Copyright © 2026 PallasOwl")
                     .font(.caption).foregroundStyle(.tertiary)

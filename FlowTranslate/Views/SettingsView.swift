@@ -72,6 +72,7 @@ private struct ModelComboBox: NSViewRepresentable {
 
 struct SettingsView: View {
     @Environment(AppState.self) private var state
+    @Environment(\.openWindow) private var openWindow
     @State private var category: SettingsCategory = .general
     @State private var selectedTranslationID = ""
     @State private var selectedWritingID = ""
@@ -93,8 +94,17 @@ struct SettingsView: View {
 
     var body: some View {
         VStack(spacing: 18) {
-            Picker("设置分类", selection: $category) { ForEach(SettingsCategory.allCases) { Text(LocalizedStringKey($0.rawValue)).tag($0) } }
-                .labelsHidden().pickerStyle(.segmented).frame(width: 850)
+            HStack(spacing: 12) {
+                Picker("设置分类", selection: $category) { ForEach(SettingsCategory.allCases) { Text(LocalizedStringKey($0.rawValue)).tag($0) } }
+                    .labelsHidden()
+                    .pickerStyle(.segmented)
+                    .frame(maxWidth: .infinity)
+                Button(action: returnToMainWindow) {
+                    Label("返回主界面", systemImage: "rectangle.portrait.and.arrow.right")
+                }
+                .buttonStyle(.bordered)
+                .help("关闭设置并返回主界面")
+            }
             Group {
                 switch category {
                 case .general: generalSettings
@@ -618,15 +628,7 @@ struct SettingsView: View {
     private var aboutSettings: some View {
         GroupBox {
             VStack(spacing: 0) {
-                HStack {
-                    header("关于", "版本、使用统计与项目信息")
-                    Spacer()
-                    Button {
-                        category = .general
-                    } label: {
-                        Label("返回通用设置", systemImage: "chevron.backward")
-                    }
-                }
+                HStack { header("关于", "版本、使用统计与项目信息"); Spacer() }
                 Divider()
 
                 VStack(spacing: 18) {
@@ -758,6 +760,21 @@ struct SettingsView: View {
         }
     }
 
+    private func returnToMainWindow() {
+        openWindow(id: "translator")
+        NSApp.activate(ignoringOtherApps: true)
+        DispatchQueue.main.async {
+            let settingsWords = ["settings", "设置", "réglages", "設定"]
+            NSApp.windows.first(where: { window in
+                settingsWords.contains { window.title.localizedCaseInsensitiveContains($0) }
+            })?.close()
+            NSApp.windows.first(where: { window in
+                window.title.localizedCaseInsensitiveContains("PallasOwl Translator") &&
+                !settingsWords.contains { window.title.localizedCaseInsensitiveContains($0) }
+            })?.makeKeyAndOrderFront(nil)
+        }
+    }
+
     private var speechVoiceSettings: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("朗读语音").fontWeight(.medium)
@@ -780,7 +797,7 @@ struct SettingsView: View {
                             }
                         }
                         .buttonStyle(.plain)
-                        Button(state.isSpeaking ? "停止" : "试听") {
+                        Button(state.isSpeaking && state.previewingVoiceIdentifier == row.voice.identifier ? "停止" : "试听") {
                             state.toggleSpeechPreview(identifier: row.voice.identifier, languageCode: row.language.code)
                         }
                         Button(role: .destructive) {
@@ -924,7 +941,7 @@ private struct VoicePickerSheet: View {
                         }
                     }.buttonStyle(.plain)
                     Spacer()
-                    Button(state.isSpeaking ? "停止" : "试听") {
+                    Button(state.isSpeaking && state.previewingVoiceIdentifier == voice.identifier ? "停止" : "试听") {
                         state.toggleSpeechPreview(identifier: voice.identifier, languageCode: languageCode)
                     }
                 }.padding(.vertical, 3)

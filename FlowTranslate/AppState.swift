@@ -76,6 +76,7 @@ final class AppState {
     var editorLineSpacing = UserDefaults.standard.object(forKey: "editorLineSpacing") as? Double ?? 5
     var voiceIdentifiersByLanguage: [String: String] = AppState.loadSpeechVoices()
     var isSpeaking = false
+    var previewingVoiceIdentifier: String?
     var shortcuts: [ShortcutAction: ShortcutConfig] = AppState.loadShortcuts()
 
     private let service = AIService()
@@ -90,7 +91,12 @@ final class AppState {
 
     init() {
         migrateLegacySpeechVoiceIfNeeded()
-        speechObserver.didFinish = { [weak self] in Task { @MainActor in self?.isSpeaking = false } }
+        speechObserver.didFinish = { [weak self] in
+            Task { @MainActor in
+                self?.isSpeaking = false
+                self?.previewingVoiceIdentifier = nil
+            }
+        }
         speechSynthesizer.delegate = speechObserver
         migrateServiceListsIfNeeded()
         migrateDocumentServiceListIfNeeded()
@@ -255,6 +261,7 @@ final class AppState {
     func speak(_ text: String, language: Language) {
         guard !text.isEmpty else { return }
         speechSynthesizer.stopSpeaking(at: .immediate)
+        previewingVoiceIdentifier = nil
         let utterance = AVSpeechUtterance(string: text)
         let code = speechLanguageCode(for: language, text: text)
         let selectedIdentifier = voiceIdentifiersByLanguage[languagePreferenceKey(for: code)] ?? ""
@@ -306,6 +313,7 @@ final class AppState {
     func stopSpeaking() {
         speechSynthesizer.stopSpeaking(at: .immediate)
         isSpeaking = false
+        previewingVoiceIdentifier = nil
     }
 
     var availableVoices: [AVSpeechSynthesisVoice] {
@@ -342,6 +350,7 @@ final class AppState {
         let utterance = AVSpeechUtterance(string: sample)
         utterance.voice = voice ?? AVSpeechSynthesisVoice(language: language)
         utterance.rate = AVSpeechUtteranceDefaultSpeechRate
+        previewingVoiceIdentifier = voice?.identifier
         isSpeaking = true
         speechSynthesizer.speak(utterance)
     }

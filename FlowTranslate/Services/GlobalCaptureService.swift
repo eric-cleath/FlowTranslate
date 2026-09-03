@@ -1,6 +1,7 @@
 import AppKit
 @preconcurrency import ApplicationServices
 import Carbon
+import ImageIO
 import SwiftUI
 import Vision
 
@@ -408,10 +409,17 @@ final class GlobalCaptureService {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
         process.arguments = ["-i", fileURL.path]
-        process.terminationHandler = { _ in
+        process.terminationHandler = { process in
             defer { try? FileManager.default.removeItem(at: fileURL) }
-            guard let image = NSImage(contentsOf: fileURL), let tiff = image.tiffRepresentation, let bitmap = NSBitmapImageRep(data: tiff), let cgImage = bitmap.cgImage else { return }
+            // screencapture returns a non-zero status when the user cancels.
+            guard process.terminationStatus == 0 else { return }
             Task { @MainActor in self.onScreenshotProcessing?() }
+
+            guard let source = CGImageSourceCreateWithURL(fileURL as CFURL, nil),
+                  let cgImage = CGImageSourceCreateImageAtIndex(source, 0, nil) else {
+                Task { @MainActor in self.onError?("无法读取截图图像，请重新截图。") }
+                return
+            }
             let request = VNRecognizeTextRequest { request, _ in
                 let observations = request.results as? [VNRecognizedTextObservation] ?? []
                 let text = Self.mergeRecognizedLines(observations)
@@ -424,7 +432,11 @@ final class GlobalCaptureService {
             request.usesLanguageCorrection = true
             request.automaticallyDetectsLanguage = true
             request.recognitionLanguages = ["zh-Hans", "zh-Hant", "ja-JP", "ko-KR", "en-US"]
-            try? VNImageRequestHandler(cgImage: cgImage).perform([request])
+            do {
+                try VNImageRequestHandler(cgImage: cgImage).perform([request])
+            } catch {
+                Task { @MainActor in self.onError?("截图文字识别失败：\(error.localizedDescription)") }
+            }
         }
         do { try process.run() }
         catch { onError?("无法启动系统截图：\(error.localizedDescription)") }

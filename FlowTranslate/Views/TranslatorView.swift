@@ -215,7 +215,7 @@ struct TranslatorView: View {
     private func bringTranslatorWindowToFront() {
         NSApp.activate(ignoringOtherApps: true)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
-            NSApp.windows.first(where: { $0.title.contains("PallasOwl Translator") })?.makeKeyAndOrderFront(nil)
+            translatorWindow()?.makeKeyAndOrderFront(nil)
         }
     }
 
@@ -228,10 +228,18 @@ struct TranslatorView: View {
         openWindow(id: "translator")
         NSApp.activate(ignoringOtherApps: true)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            NSApp.windows.first(where: { $0.title.contains("PallasOwl Translator") })?.makeKeyAndOrderFront(nil)
+            translatorWindow()?.makeKeyAndOrderFront(nil)
         }
         if autoTranslate {
             Task { await state.run() }
+        }
+    }
+
+    private func translatorWindow() -> NSWindow? {
+        let settingsWords = ["settings", "设置", "réglages", "設定"]
+        return NSApp.windows.first { window in
+            window.title.localizedCaseInsensitiveContains("PallasOwl Translator") &&
+            !settingsWords.contains { window.title.localizedCaseInsensitiveContains($0) }
         }
     }
 

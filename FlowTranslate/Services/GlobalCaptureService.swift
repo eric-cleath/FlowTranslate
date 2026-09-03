@@ -40,6 +40,7 @@ final class GlobalCaptureService {
     private var instantActionTarget: InstantSelectionActionTarget?
     private var instantCloseTarget: InstantSelectionActionTarget?
     private var instantDismissWorkItem: DispatchWorkItem?
+    private var screenshotProcess: Process?
     private init() {}
 
     func start() {
@@ -405,12 +406,20 @@ final class GlobalCaptureService {
             onError?("需要屏幕录制权限。授权后请重启 PallasOwl Translator，再按截图翻译快捷键。")
             return
         }
+        guard screenshotProcess == nil else {
+            onError?("截图工具仍在运行，请先完成或取消当前截图。")
+            return
+        }
         let fileURL = FileManager.default.temporaryDirectory.appending(path: "PallasOwl-\(UUID().uuidString).png")
         let process = Process()
+        screenshotProcess = process
         process.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
         process.arguments = ["-i", fileURL.path]
         process.terminationHandler = { process in
             defer { try? FileManager.default.removeItem(at: fileURL) }
+            Task { @MainActor in
+                if self.screenshotProcess === process { self.screenshotProcess = nil }
+            }
             // screencapture returns a non-zero status when the user cancels.
             guard process.terminationStatus == 0 else { return }
             Task { @MainActor in self.onScreenshotProcessing?() }
@@ -439,7 +448,10 @@ final class GlobalCaptureService {
             }
         }
         do { try process.run() }
-        catch { onError?("无法启动系统截图：\(error.localizedDescription)") }
+        catch {
+            screenshotProcess = nil
+            onError?("无法启动系统截图：\(error.localizedDescription)")
+        }
     }
 
     private func register(id: UInt32, key: UInt32, modifiers: UInt32) {

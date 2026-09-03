@@ -212,10 +212,18 @@ struct TranslatorView: View {
         }
     }
 
-    private func bringTranslatorWindowToFront() {
+    private func bringTranslatorWindowToFront(attempt: Int = 0) {
         NSApp.activate(ignoringOtherApps: true)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
-            translatorWindow()?.makeKeyAndOrderFront(nil)
+        let retryDelays: [TimeInterval] = [0.02, 0.08, 0.15, 0.25, 0.4, 0.6]
+        let delay = retryDelays[min(attempt, retryDelays.count - 1)]
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+            if let window = translatorWindow() {
+                if window.isMiniaturized { window.deminiaturize(nil) }
+                window.orderFrontRegardless()
+                window.makeKey()
+            } else if attempt + 1 < retryDelays.count {
+                bringTranslatorWindowToFront(attempt: attempt + 1)
+            }
         }
     }
 
@@ -226,10 +234,7 @@ struct TranslatorView: View {
         showsChannelTrackingMode = false
         if let text { state.prepareInput(text) }
         openWindow(id: "translator")
-        NSApp.activate(ignoringOtherApps: true)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            translatorWindow()?.makeKeyAndOrderFront(nil)
-        }
+        bringTranslatorWindowToFront()
         if autoTranslate {
             Task { await state.run() }
         }

@@ -131,22 +131,7 @@ struct TranslatorView: View {
         let capture = GlobalCaptureService.shared
         capture.onInput = { showTranslator(text: "", autoTranslate: false) }
         capture.onSelection = { showTranslator(text: $0, autoTranslate: true) }
-        capture.onScreenshotProcessing = {
-            showsDocumentMode = false
-            showsLiveCaptionMode = false
-            showsMediaMode = false
-            showsChannelTrackingMode = false
-            state.prepareInput("", activate: false)
-            state.isWorking = true
-            state.processingStatus = "正在识别截图文字…"
-            openWindow(id: "translator")
-            bringTranslatorWindowToFront()
-        }
-        capture.onScreenshot = {
-            state.isWorking = false
-            state.processingStatus = ""
-            showTranslator(text: $0, autoTranslate: true)
-        }
+        capture.onScreenshot = { showTranslator(text: $0, autoTranslate: true) }
         capture.onCrossLanguageWriting = { text in
             showsDocumentMode = false
             showsMediaMode = false

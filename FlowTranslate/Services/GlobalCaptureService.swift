@@ -10,7 +10,6 @@ final class GlobalCaptureService {
     static let shared = GlobalCaptureService()
     var onInput: (() -> Void)?
     var onSelection: ((String) -> Void)?
-    var onScreenshotProcessing: (() -> Void)?
     var onScreenshot: ((String) -> Void)?
     var onCrossLanguageWriting: ((String) -> Void)?
     var onOpenLiveCaption: (() -> Void)?
@@ -422,8 +421,6 @@ final class GlobalCaptureService {
             }
             // screencapture returns a non-zero status when the user cancels.
             guard process.terminationStatus == 0 else { return }
-            Task { @MainActor in self.onScreenshotProcessing?() }
-
             guard let source = CGImageSourceCreateWithURL(fileURL as CFURL, nil),
                   let cgImage = CGImageSourceCreateImageAtIndex(source, 0, nil) else {
                 Task { @MainActor in self.onError?("无法读取截图图像，请重新截图。") }
